@@ -207,57 +207,120 @@ ELSE IF t_nm3=. THEN e_n = q_D*( (3/6)*(Date_of_Supply-t_nm1)/q_nm1 + (2/6)*(t_n
 <div class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># including necessary steps</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co"># stick to the same variable names</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>e_pop_estimate <span class="ot">&lt;-</span> <span class="cf">function</span>(item_code, macro_d) {</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="co"># sort data by PPN and dispensing date</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  macro_d <span class="ot">&lt;-</span> macro_d <span class="sc">%&gt;%</span></span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">arrange</span>(PPN, Date_of_Supply)</span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># initialise variables and calculate dispensing intervals</span></span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>  e_pope <span class="ot">&lt;-</span> macro_d <span class="sc">%&gt;%</span></span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(group <span class="sc">==</span> item_code) <span class="sc">%&gt;%</span></span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">last_time =</span> <span class="cn">NA</span>,</span>
-<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>           <span class="at">last_q =</span> <span class="cn">NA</span>,</span>
-<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>           <span class="at">new_episode =</span> <span class="dv">0</span>,</span>
-<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>           <span class="at">t_nm1 =</span> <span class="cn">NA</span>,</span>
-<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>           <span class="at">q_nm1 =</span> <span class="cn">NA</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">group_by</span>(PPN) <span class="sc">%&gt;%</span></span>
-<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">t_nm1 =</span> <span class="fu">lag</span>(last_time),</span>
-<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>           <span class="at">q_nm1 =</span> <span class="fu">lag</span>(last_q),</span>
-<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>           <span class="at">last_q =</span> q_D,</span>
-<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>           <span class="at">last_time =</span> Date_of_Supply) <span class="sc">%&gt;%</span></span>
-<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(<span class="fu">is.na</span>(t_nm1) <span class="sc">|</span> Date_of_Supply <span class="sc">-</span> t_nm1 <span class="sc">&gt;=</span> <span class="dv">365</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">new_episode =</span> <span class="dv">1</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ungroup</span>()</span>
-<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>  <span class="co"># check output</span></span>
-<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="fu">head</span>(e_pope, <span class="dv">50</span>))</span>
-<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>  <span class="co"># calculate days per unit following a dispensing day</span></span>
-<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>  e_pop_est <span class="ot">&lt;-</span> e_pope <span class="sc">%&gt;%</span></span>
-<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">dif =</span> Date_of_Supply <span class="sc">-</span> t_nm1, <span class="at">e_pop_est =</span> dif <span class="sc">/</span> q_nm1) <span class="sc">%&gt;%</span></span>
-<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>    <span class="fu">group_by</span>(PPN) <span class="sc">%&gt;%</span></span>
-<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">first_interval =</span> <span class="fu">ifelse</span>(<span class="fu">first</span>(PPN), <span class="dv">1</span>, <span class="dv">0</span>)) <span class="sc">%&gt;%</span></span>
-<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ungroup</span>()</span>
-<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a>  <span class="co"># check again</span></span>
-<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="fu">head</span>(e_pop_est, <span class="dv">50</span>))</span>
-<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a>  <span class="co"># calculate the 80th percentile estimate</span></span>
-<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a>  e_pop_est_summary <span class="ot">&lt;-</span> e_pop_est <span class="sc">%&gt;%</span></span>
-<span id="cb6-41"><a href="#cb6-41" aria-hidden="true" tabindex="-1"></a>    <span class="fu">summarise</span>(<span class="at">P_80 =</span> <span class="fu">quantile</span>(e_pop_est, <span class="fl">0.8</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb6-42"><a href="#cb6-42" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-43"><a href="#cb6-43" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(e_pop_est_summary)</span>
-<span id="cb6-44"><a href="#cb6-44" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb6-45"><a href="#cb6-45" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(e_pop_est_summary)</span>
-<span id="cb6-46"><a href="#cb6-46" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># lots of issues with dates and unexpected behaviours</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># decided to make it work prior optimisation of code</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>e_pop_estimate <span class="ot">&lt;-</span> <span class="cf">function</span>(item_code, macro_d) {</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  <span class="co"># sort data by PPN and dispensing date</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>  medicine_data <span class="ot">&lt;-</span> macro_d <span class="sc">%&gt;%</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">arrange</span>(PPN, Date_of_Supply) <span class="sc">%&gt;%</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># keep data for the specific medicine/class</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(group <span class="sc">==</span> item_code)</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>  <span class="co"># need empty df to collect continuous episodes and new episodes</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>  e_pope <span class="ot">&lt;-</span> <span class="fu">data.frame</span>()</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>  new_episode <span class="ot">&lt;-</span> <span class="fu">data.frame</span>()</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>  <span class="co"># process data row by row, sticking to SAS code </span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>  patients <span class="ot">&lt;-</span> <span class="fu">unique</span>(medicine_data<span class="sc">$</span>PPN)</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (patient <span class="cf">in</span> patients) {</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>    patient_data <span class="ot">&lt;-</span> medicine_data <span class="sc">%&gt;%</span> <span class="fu">filter</span>(PPN <span class="sc">==</span> patient)</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># initialise tracking variables</span></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>    last_time <span class="ot">&lt;-</span> <span class="fu">as.Date</span>(<span class="cn">NA</span>)</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    last_q <span class="ot">&lt;-</span> <span class="cn">NA</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    t_nm1 <span class="ot">&lt;-</span> <span class="fu">as.Date</span>(<span class="cn">NA</span>)</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>    q_nm1 <span class="ot">&lt;-</span> <span class="cn">NA</span></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>    new_episode_flag <span class="ot">&lt;-</span> <span class="dv">0</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(patient_data)) {</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>      <span class="co"># update tracking variables</span></span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>      t_nm1 <span class="ot">&lt;-</span> last_time</span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a>      q_nm1 <span class="ot">&lt;-</span> last_q</span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>      last_q <span class="ot">&lt;-</span> patient_data<span class="sc">$</span>q_D[i]</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>      last_time <span class="ot">&lt;-</span> <span class="fu">as.Date</span>(patient_data<span class="sc">$</span>Date_of_Supply[i])</span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>      </span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a>      <span class="co"># check if new episode (first dispensing or gap ≥ 365 days)</span></span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> (<span class="fu">is.na</span>(t_nm1) <span class="sc">||</span> (patient_data<span class="sc">$</span>Date_of_Supply[i] <span class="sc">-</span> t_nm1) <span class="sc">&gt;=</span> <span class="dv">365</span>) {</span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a>        new_episode_flag <span class="ot">&lt;-</span> <span class="dv">1</span></span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a>        <span class="co"># add row to new_episode dataset</span></span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a>        row <span class="ot">&lt;-</span> patient_data[i, ]</span>
+<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>last_time <span class="ot">&lt;-</span> last_time</span>
+<span id="cb6-41"><a href="#cb6-41" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>last_q <span class="ot">&lt;-</span> last_q</span>
+<span id="cb6-42"><a href="#cb6-42" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>t_nm1 <span class="ot">&lt;-</span> t_nm1</span>
+<span id="cb6-43"><a href="#cb6-43" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>q_nm1 <span class="ot">&lt;-</span> q_nm1</span>
+<span id="cb6-44"><a href="#cb6-44" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>new_episode <span class="ot">&lt;-</span> new_episode_flag</span>
+<span id="cb6-45"><a href="#cb6-45" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb6-46"><a href="#cb6-46" aria-hidden="true" tabindex="-1"></a>        new_episode <span class="ot">&lt;-</span> <span class="fu">rbind</span>(new_episode, row)</span>
+<span id="cb6-47"><a href="#cb6-47" aria-hidden="true" tabindex="-1"></a>        <span class="co"># reset flag</span></span>
+<span id="cb6-48"><a href="#cb6-48" aria-hidden="true" tabindex="-1"></a>        new_episode_flag <span class="ot">&lt;-</span> <span class="dv">0</span>} </span>
+<span id="cb6-49"><a href="#cb6-49" aria-hidden="true" tabindex="-1"></a>      </span>
+<span id="cb6-50"><a href="#cb6-50" aria-hidden="true" tabindex="-1"></a>      <span class="cf">else</span> {</span>
+<span id="cb6-51"><a href="#cb6-51" aria-hidden="true" tabindex="-1"></a>        <span class="co"># add row to e_pope dataset (continuous episode)</span></span>
+<span id="cb6-52"><a href="#cb6-52" aria-hidden="true" tabindex="-1"></a>        row <span class="ot">&lt;-</span> patient_data[i, ]</span>
+<span id="cb6-53"><a href="#cb6-53" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>last_time <span class="ot">&lt;-</span> last_time</span>
+<span id="cb6-54"><a href="#cb6-54" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>last_q <span class="ot">&lt;-</span> last_q</span>
+<span id="cb6-55"><a href="#cb6-55" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>t_nm1 <span class="ot">&lt;-</span> t_nm1</span>
+<span id="cb6-56"><a href="#cb6-56" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>q_nm1 <span class="ot">&lt;-</span> q_nm1</span>
+<span id="cb6-57"><a href="#cb6-57" aria-hidden="true" tabindex="-1"></a>        row<span class="sc">$</span>new_episode <span class="ot">&lt;-</span> new_episode_flag</span>
+<span id="cb6-58"><a href="#cb6-58" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb6-59"><a href="#cb6-59" aria-hidden="true" tabindex="-1"></a>        e_pope <span class="ot">&lt;-</span> <span class="fu">rbind</span>(e_pope, row)</span>
+<span id="cb6-60"><a href="#cb6-60" aria-hidden="true" tabindex="-1"></a>      }</span>
+<span id="cb6-61"><a href="#cb6-61" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb6-62"><a href="#cb6-62" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb6-63"><a href="#cb6-63" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb6-64"><a href="#cb6-64" aria-hidden="true" tabindex="-1"></a>  <span class="co"># checks with first 50 rows of each dataset</span></span>
+<span id="cb6-65"><a href="#cb6-65" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">nrow</span>(e_pope) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb6-66"><a href="#cb6-66" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="st">"First 50 rows of e_pope:"</span>)</span>
+<span id="cb6-67"><a href="#cb6-67" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="fu">head</span>(e_pope, <span class="dv">50</span>))}</span>
+<span id="cb6-68"><a href="#cb6-68" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb6-69"><a href="#cb6-69" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">nrow</span>(new_episode) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb6-70"><a href="#cb6-70" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="st">"First 50 rows of new_episode:"</span>)</span>
+<span id="cb6-71"><a href="#cb6-71" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="fu">head</span>(new_episode, <span class="dv">50</span>))}</span>
+<span id="cb6-72"><a href="#cb6-72" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb6-73"><a href="#cb6-73" aria-hidden="true" tabindex="-1"></a>  <span class="co"># calculate days per unit following a dispensing day</span></span>
+<span id="cb6-74"><a href="#cb6-74" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">nrow</span>(e_pope) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb6-75"><a href="#cb6-75" aria-hidden="true" tabindex="-1"></a>    e_pop_est <span class="ot">&lt;-</span> e_pope <span class="sc">%&gt;%</span></span>
+<span id="cb6-76"><a href="#cb6-76" aria-hidden="true" tabindex="-1"></a>      <span class="fu">mutate</span>(<span class="at">dif =</span> <span class="fu">as.numeric</span>(Date_of_Supply <span class="sc">-</span> t_nm1),</span>
+<span id="cb6-77"><a href="#cb6-77" aria-hidden="true" tabindex="-1"></a>             <span class="at">e_pop_est =</span> dif <span class="sc">/</span> q_nm1) <span class="sc">%&gt;%</span></span>
+<span id="cb6-78"><a href="#cb6-78" aria-hidden="true" tabindex="-1"></a>      <span class="fu">group_by</span>(PPN) <span class="sc">%&gt;%</span></span>
+<span id="cb6-79"><a href="#cb6-79" aria-hidden="true" tabindex="-1"></a>      <span class="fu">mutate</span>(<span class="at">first_interval =</span> <span class="fu">row_number</span>() <span class="sc">==</span> <span class="dv">1</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb6-80"><a href="#cb6-80" aria-hidden="true" tabindex="-1"></a>      <span class="fu">ungroup</span>()</span>
+<span id="cb6-81"><a href="#cb6-81" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-82"><a href="#cb6-82" aria-hidden="true" tabindex="-1"></a>    <span class="co"># checks</span></span>
+<span id="cb6-83"><a href="#cb6-83" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="st">"first 50 rows of e_pop_est:"</span>)</span>
+<span id="cb6-84"><a href="#cb6-84" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="fu">head</span>(e_pop_est, <span class="dv">50</span>))</span>
+<span id="cb6-85"><a href="#cb6-85" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-86"><a href="#cb6-86" aria-hidden="true" tabindex="-1"></a>    <span class="co"># calculate percentiles (20th 50th 80th 90th)</span></span>
+<span id="cb6-87"><a href="#cb6-87" aria-hidden="true" tabindex="-1"></a>    percentiles <span class="ot">&lt;-</span> e_pop_est <span class="sc">%&gt;%</span></span>
+<span id="cb6-88"><a href="#cb6-88" aria-hidden="true" tabindex="-1"></a>      <span class="fu">summarise</span>(<span class="at">N =</span> <span class="fu">n</span>(),</span>
+<span id="cb6-89"><a href="#cb6-89" aria-hidden="true" tabindex="-1"></a>                <span class="at">P_20 =</span> <span class="fu">quantile</span>(e_pop_est, <span class="fl">0.20</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb6-90"><a href="#cb6-90" aria-hidden="true" tabindex="-1"></a>                <span class="at">P_50 =</span> <span class="fu">quantile</span>(e_pop_est, <span class="fl">0.50</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb6-91"><a href="#cb6-91" aria-hidden="true" tabindex="-1"></a>                <span class="at">P_80 =</span> <span class="fu">quantile</span>(e_pop_est, <span class="fl">0.80</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb6-92"><a href="#cb6-92" aria-hidden="true" tabindex="-1"></a>                <span class="at">P_90 =</span> <span class="fu">quantile</span>(e_pop_est, <span class="fl">0.90</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)) </span>
+<span id="cb6-93"><a href="#cb6-93" aria-hidden="true" tabindex="-1"></a>    percentiles<span class="sc">$</span>item_code <span class="ot">&lt;-</span> item_code <span class="co"># add parameter value</span></span>
+<span id="cb6-94"><a href="#cb6-94" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-95"><a href="#cb6-95" aria-hidden="true" tabindex="-1"></a>    <span class="co"># checks</span></span>
+<span id="cb6-96"><a href="#cb6-96" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="st">"percentile:"</span>)</span>
+<span id="cb6-97"><a href="#cb6-97" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(percentiles)</span>
+<span id="cb6-98"><a href="#cb6-98" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-99"><a href="#cb6-99" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(percentiles)</span>
+<span id="cb6-100"><a href="#cb6-100" aria-hidden="true" tabindex="-1"></a>  } </span>
+<span id="cb6-101"><a href="#cb6-101" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb6-102"><a href="#cb6-102" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span> {</span>
+<span id="cb6-103"><a href="#cb6-103" aria-hidden="true" tabindex="-1"></a>    <span class="fu">warning</span>(<span class="st">"no continuous episodes found for this item_code"</span>)</span>
+<span id="cb6-104"><a href="#cb6-104" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-105"><a href="#cb6-105" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(<span class="fu">data.frame</span>(<span class="at">N =</span> <span class="dv">0</span>, <span class="at">P_20 =</span> <span class="cn">NA</span>, <span class="at">P_50 =</span> <span class="cn">NA</span>,</span>
+<span id="cb6-106"><a href="#cb6-106" aria-hidden="true" tabindex="-1"></a>                      <span class="at">P_80 =</span> <span class="cn">NA</span>, <span class="at">P_90 =</span> <span class="cn">NA</span>, <span class="at">item_code =</span> item_code))</span>
+<span id="cb6-107"><a href="#cb6-107" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb6-108"><a href="#cb6-108" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="implementation-of-exposure_by_drug-macro" class="level2">
 <h2 class="anchored" data-anchor-id="implementation-of-exposure_by_drug-macro">Implementation of <code>exposure_by_drug</code> macro</h2>
+<p>This needs entire reworking</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># including necessary steps</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>exposure_by_drug <span class="ot">&lt;-</span> <span class="cf">function</span>() {</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>exposure_by_drug <span class="ot">&lt;-</span> <span class="cf">function</span>(drug_number, macro_d, EndDate, output) {</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="co"># subset dispensing data for the specific drug</span></span>
 <span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  macro_d_temp <span class="ot">&lt;-</span> macro_d <span class="sc">%&gt;%</span></span>
 <span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(group <span class="sc">==</span> drug_number <span class="sc">&amp;</span> Date_of_Supply <span class="sc">&gt;=</span> Date_of_Supply_index)</span>
@@ -324,6 +387,69 @@ ELSE IF t_nm3=. THEN e_n = q_D*( (3/6)*(Date_of_Supply-t_nm1)/q_nm1 + (2/6)*(t_n
 <span id="cb7-66"><a href="#cb7-66" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(output_data)</span>
 <span id="cb7-67"><a href="#cb7-67" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
+</section>
+<section id="testing" class="level2">
+<h2 class="anchored" data-anchor-id="testing">Testing</h2>
+<section id="generate-fake-data" class="level3">
+<h3 class="anchored" data-anchor-id="generate-fake-data">Generate fake data</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>create_test_data <span class="ot">&lt;-</span> <span class="cf">function</span>() {</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  test_data <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">PPN =</span> <span class="fu">rep</span>(<span class="fu">c</span>(<span class="dv">1001</span>, <span class="dv">1002</span>, <span class="dv">1003</span>, <span class="dv">1004</span>), <span class="at">times =</span> <span class="fu">c</span>(<span class="dv">5</span>, <span class="dv">3</span>, <span class="dv">6</span>, <span class="dv">4</span>)),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">group =</span> <span class="fu">rep</span>(<span class="fu">c</span>(<span class="dv">101</span>, <span class="dv">101</span>, <span class="dv">101</span>, <span class="dv">102</span>), <span class="at">times =</span> <span class="fu">c</span>(<span class="dv">5</span>, <span class="dv">3</span>, <span class="dv">6</span>, <span class="dv">4</span>)),</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">Date_of_Supply =</span> <span class="fu">as.Date</span>(<span class="fu">c</span>(<span class="st">"2020-01-15"</span>, <span class="st">"2020-02-15"</span>, <span class="st">"2020-03-15"</span>, <span class="st">"2020-04-15"</span>, <span class="st">"2020-05-15"</span>,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>                               <span class="st">"2020-01-10"</span>, <span class="st">"2020-02-10"</span>, <span class="st">"2021-03-20"</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>                               <span class="st">"2020-01-05"</span>, <span class="st">"2020-02-10"</span>, <span class="st">"2020-04-20"</span>, <span class="st">"2020-07-01"</span>, <span class="st">"2020-08-15"</span>, <span class="st">"2021-09-20"</span>,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>                               <span class="st">"2020-01-15"</span>, <span class="st">"2020-03-15"</span>, <span class="st">"2020-06-15"</span>, <span class="st">"2020-09-15"</span>)),</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">q_D =</span> <span class="fu">c</span>(<span class="dv">30</span>, <span class="dv">30</span>, <span class="dv">30</span>, <span class="dv">30</span>, <span class="dv">30</span>, <span class="co"># PPN 1001</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>            <span class="dv">28</span>, <span class="dv">28</span>, <span class="dv">28</span>, <span class="co"># PPN 1002</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>            <span class="dv">14</span>, <span class="dv">28</span>, <span class="dv">30</span>, <span class="dv">60</span>, <span class="dv">30</span>, <span class="dv">30</span>, <span class="co"># PPN 1003</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>            <span class="dv">60</span>, <span class="dv">60</span>, <span class="dv">60</span>, <span class="dv">60</span>), <span class="co"># PPN 1004</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">Date_of_Supply_index =</span> <span class="fu">as.Date</span>(<span class="fu">c</span>(<span class="fu">rep</span>(<span class="st">"2020-01-01"</span>, <span class="dv">5</span>), <span class="fu">rep</span>(<span class="st">"2020-01-01"</span>, <span class="dv">3</span>),</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>                                     <span class="fu">rep</span>(<span class="st">"2020-01-01"</span>, <span class="dv">6</span>), <span class="fu">rep</span>(<span class="st">"2020-01-01"</span>, <span class="dv">4</span>))),</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">DeathDate =</span> <span class="fu">as.Date</span>(<span class="fu">c</span>(<span class="fu">rep</span>(<span class="cn">NA</span>, <span class="dv">5</span>), <span class="fu">rep</span>(<span class="cn">NA</span>, <span class="dv">2</span>), <span class="st">"2021-06-30"</span>, <span class="co"># PPN 1002 deceased status</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>                          <span class="fu">rep</span>(<span class="cn">NA</span>, <span class="dv">6</span>), <span class="fu">rep</span>(<span class="cn">NA</span>, <span class="dv">4</span>))))</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(test_data)</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="test-implementation-e_pop_estimate" class="level3">
+<h3 class="anchored" data-anchor-id="test-implementation-e_pop_estimate">Test implementation <code>e_pop_estimate</code></h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>test_e_pop_estimate <span class="ot">&lt;-</span> <span class="cf">function</span>() {</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">e_pop_estimate testing</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="co"># generate test data</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  test_data <span class="ot">&lt;-</span> <span class="fu">create_test_data</span>()</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="co"># run the function for group 101 and 102</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>  percentiles_101 <span class="ot">&lt;-</span> <span class="fu">e_pop_estimate</span>(<span class="dv">101</span>, test_data)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  percentiles_102 <span class="ot">&lt;-</span> <span class="fu">e_pop_estimate</span>(<span class="dv">102</span>, test_data)</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>  <span class="co"># show results</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">percentiles for group 101:</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(percentiles_101)</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">percentiles for group 102:</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(percentiles_102)</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>  <span class="co"># combine data</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>  combined_item_code <span class="ot">&lt;-</span> <span class="fu">rbind</span>(percentiles_101, percentiles_102)</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>  combined_item_code3 <span class="ot">&lt;-</span> combined_item_code <span class="sc">%&gt;%</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">group =</span> <span class="fu">as.numeric</span>(item_code))</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">combined percentiles:</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(combined_item_code3)</span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(combined_item_code3)</span>
+<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="test-implementation-exposure_by_drug" class="level3">
+<h3 class="anchored" data-anchor-id="test-implementation-exposure_by_drug">Test implementation <code>exposure_by_drug</code></h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># to write up but suspect current implementation is bad</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
 </section>
 
 </main>

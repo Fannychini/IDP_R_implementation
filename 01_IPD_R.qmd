@@ -73,58 +73,120 @@ The output dataset contains exposure histories with:
 ```{r}
 # including necessary steps
 # stick to the same variable names
+# lots of issues with dates and unexpected behaviours
+# decided to make it work prior optimisation of code
 e_pop_estimate <- function(item_code, macro_d) {
   
   # sort data by PPN and dispensing date
-  macro_d <- macro_d %>%
-    arrange(PPN, Date_of_Supply)
+  medicine_data <- macro_d %>%
+    arrange(PPN, Date_of_Supply) %>%
+    # keep data for the specific medicine/class
+    filter(group == item_code)
   
-  # initialise variables and calculate dispensing intervals
-  e_pope <- macro_d %>%
-    filter(group == item_code) %>%
-    mutate(last_time = NA,
-           last_q = NA,
-           new_episode = 0,
-           t_nm1 = NA,
-           q_nm1 = NA) %>%
-    group_by(PPN) %>%
-    mutate(t_nm1 = lag(last_time),
-           q_nm1 = lag(last_q),
-           last_q = q_D,
-           last_time = Date_of_Supply) %>%
-    filter(is.na(t_nm1) | Date_of_Supply - t_nm1 >= 365) %>%
-    mutate(new_episode = 1) %>%
-    ungroup()
+  # need empty df to collect continuous episodes and new episodes
+  e_pope <- data.frame()
+  new_episode <- data.frame()
   
-  # check output
-  print(head(e_pope, 50))
+  # process data row by row, sticking to SAS code 
+  patients <- unique(medicine_data$PPN)
+  for (patient in patients) {
+    patient_data <- medicine_data %>% filter(PPN == patient)
+    # initialise tracking variables
+    last_time <- as.Date(NA)
+    last_q <- NA
+    t_nm1 <- as.Date(NA)
+    q_nm1 <- NA
+    new_episode_flag <- 0
+    
+    for (i in 1:nrow(patient_data)) {
+      # update tracking variables
+      t_nm1 <- last_time
+      q_nm1 <- last_q
+      last_q <- patient_data$q_D[i]
+      last_time <- as.Date(patient_data$Date_of_Supply[i])
+      
+      # check if new episode (first dispensing or gap ≥ 365 days)
+      if (is.na(t_nm1) || (patient_data$Date_of_Supply[i] - t_nm1) >= 365) {
+        new_episode_flag <- 1
+        # add row to new_episode dataset
+        row <- patient_data[i, ]
+        row$last_time <- last_time
+        row$last_q <- last_q
+        row$t_nm1 <- t_nm1
+        row$q_nm1 <- q_nm1
+        row$new_episode <- new_episode_flag
+        
+        new_episode <- rbind(new_episode, row)
+        # reset flag
+        new_episode_flag <- 0} 
+      
+      else {
+        # add row to e_pope dataset (continuous episode)
+        row <- patient_data[i, ]
+        row$last_time <- last_time
+        row$last_q <- last_q
+        row$t_nm1 <- t_nm1
+        row$q_nm1 <- q_nm1
+        row$new_episode <- new_episode_flag
+        
+        e_pope <- rbind(e_pope, row)
+      }
+    }
+  }
+  
+  # checks with first 50 rows of each dataset
+  if (nrow(e_pope) > 0) {
+    print("First 50 rows of e_pope:")
+    print(head(e_pope, 50))}
+  
+  if (nrow(new_episode) > 0) {
+    print("First 50 rows of new_episode:")
+    print(head(new_episode, 50))}
   
   # calculate days per unit following a dispensing day
-  e_pop_est <- e_pope %>%
-    mutate(dif = Date_of_Supply - t_nm1, e_pop_est = dif / q_nm1) %>%
-    group_by(PPN) %>%
-    mutate(first_interval = ifelse(first(PPN), 1, 0)) %>%
-    ungroup()
+  if (nrow(e_pope) > 0) {
+    e_pop_est <- e_pope %>%
+      mutate(dif = as.numeric(Date_of_Supply - t_nm1),
+             e_pop_est = dif / q_nm1) %>%
+      group_by(PPN) %>%
+      mutate(first_interval = row_number() == 1) %>%
+      ungroup()
+    
+    # checks
+    print("first 50 rows of e_pop_est:")
+    print(head(e_pop_est, 50))
+    
+    # calculate percentiles (20th 50th 80th 90th)
+    percentiles <- e_pop_est %>%
+      summarise(N = n(),
+                P_20 = quantile(e_pop_est, 0.20, na.rm = TRUE),
+                P_50 = quantile(e_pop_est, 0.50, na.rm = TRUE),
+                P_80 = quantile(e_pop_est, 0.80, na.rm = TRUE),
+                P_90 = quantile(e_pop_est, 0.90, na.rm = TRUE)) 
+    percentiles$item_code <- item_code # add parameter value
+    
+    # checks
+    print("percentile:")
+    print(percentiles)
+    
+    return(percentiles)
+  } 
   
-  # check again
-  print(head(e_pop_est, 50))
-  
-  # calculate the 80th percentile estimate
-  e_pop_est_summary <- e_pop_est %>%
-    summarise(P_80 = quantile(e_pop_est, 0.8, na.rm = TRUE))
-  
-  print(e_pop_est_summary)
-  
-  return(e_pop_est_summary)
+  else {
+    warning("no continuous episodes found for this item_code")
+    
+    return(data.frame(N = 0, P_20 = NA, P_50 = NA,
+                      P_80 = NA, P_90 = NA, item_code = item_code))
+  }
 }
 ```
 
-
 ## Implementation of `exposure_by_drug` macro
+This needs entire reworking
 
 ```{r}
 # including necessary steps
-exposure_by_drug <- function() {
+exposure_by_drug <- function(drug_number, macro_d, EndDate, output) {
   # subset dispensing data for the specific drug
   macro_d_temp <- macro_d %>%
     filter(group == drug_number & Date_of_Supply >= Date_of_Supply_index)
@@ -191,3 +253,64 @@ exposure_by_drug <- function() {
   return(output_data)
 }
 ```
+
+
+## Testing
+
+### Generate fake data
+```{r}
+create_test_data <- function() {
+  test_data <- data.frame(
+    PPN = rep(c(1001, 1002, 1003, 1004), times = c(5, 3, 6, 4)),
+    group = rep(c(101, 101, 101, 102), times = c(5, 3, 6, 4)),
+    Date_of_Supply = as.Date(c("2020-01-15", "2020-02-15", "2020-03-15", "2020-04-15", "2020-05-15",
+                               "2020-01-10", "2020-02-10", "2021-03-20",
+                               "2020-01-05", "2020-02-10", "2020-04-20", "2020-07-01", "2020-08-15", "2021-09-20",
+                               "2020-01-15", "2020-03-15", "2020-06-15", "2020-09-15")),
+    q_D = c(30, 30, 30, 30, 30, # PPN 1001
+            28, 28, 28, # PPN 1002
+            14, 28, 30, 60, 30, 30, # PPN 1003
+            60, 60, 60, 60), # PPN 1004
+    Date_of_Supply_index = as.Date(c(rep("2020-01-01", 5), rep("2020-01-01", 3),
+                                     rep("2020-01-01", 6), rep("2020-01-01", 4))),
+    DeathDate = as.Date(c(rep(NA, 5), rep(NA, 2), "2021-06-30", # PPN 1002 deceased status
+                          rep(NA, 6), rep(NA, 4))))
+  
+  return(test_data)
+}
+```
+
+### Test implementation `e_pop_estimate`
+```{r}
+test_e_pop_estimate <- function() {
+  cat("\ne_pop_estimate testing\n")
+  # generate test data
+  test_data <- create_test_data()
+  
+  # run the function for group 101 and 102
+  percentiles_101 <- e_pop_estimate(101, test_data)
+  percentiles_102 <- e_pop_estimate(102, test_data)
+  
+  # show results
+  cat("\npercentiles for group 101:\n")
+  print(percentiles_101)
+  cat("\npercentiles for group 102:\n")
+  print(percentiles_102)
+  
+  # combine data
+  combined_item_code <- rbind(percentiles_101, percentiles_102)
+  combined_item_code3 <- combined_item_code %>%
+    mutate(group = as.numeric(item_code))
+  
+  cat("\ncombined percentiles:\n")
+  print(combined_item_code3)
+  
+  return(combined_item_code3)
+}
+```
+
+### Test implementation `exposure_by_drug`
+```{r}
+# to write up but suspect current implementation is bad
+```
+
