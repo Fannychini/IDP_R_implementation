@@ -1,0 +1,109 @@
+---
+title: "IDP implementation in R"
+author: "Fanny Franchini"
+format: html
+editor: source
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Library
+library(tidyverse)
+library(lubridate)
+
+# Reproducibility
+set.seed(239) 
+sessionInfo()
+```
+
+## Background
+SAS code for the implementation of the Individualised Dispensing Patterns (IDP) method for defining medicine exposure is published: *Bharat, C, Degenhardt, L, Pearson, S-A, et al. A data-informed approach using individualised dispensing patterns to estimate medicine exposure periods and dose from pharmaceutical claims data. Pharmacoepidemiol Drug Saf. 2023; 32( 3): 352- 365. doi:10.1002/pds.5567*
+
+SAS code available here <https://github.com/c-bharat/IDP_exposure_method>.
+
+**The objective is to implement the method in R**
+1. Understanding the SAS code
+2. Implementation of `e_pop_estimate` macro
+3. Implementation of `exposure_by_drug` macro
+
+## Undertanding the SAS code
+Noting this is based on my understanding of the method as a non-SAS user. 
+
+The `e_pop_estimate` macro calculates population-level exposure based on a drug or medicine group, by:
+
+- sorting dispensing data by person (PPN) and date
+- identifying continuous episodes of medicine use (new episode if gap ≥ 365 days)
+- calculating 'days per unit' by dividing the gap between dispensings by previous quantity
+- calculating the 20th, 50th, 80th and 90th percentiles of this distribution
+
+The `exposure_by_drug` macro creates the exposure history for each individual. It calculates the start and end dates of exposure intervals, based on the dispensing data, and assigns exposure status (current, recent, or formerly exposed). This is done by:
+
+- Taking the drug group number, output dataset name, and study end date
+- Applying the IDP method to calculate personalised exposure duration estimates
+- Using a  weighted formula that adapts as more dispensing data becomes available, ~ sliding window
+
+
+The weighted formula creates three exposure categories:
+
+- Currently exposed (es=1): from dispensing day to estimated end of supply
+- Recently exposed (es=2): short period after current exposure (default 7 days)
+- Formerly exposed (es=3): after recent exposure until next dispensing
+
+```
+/* For first dispensing */
+IF t_nm1=. THEN e_n = q_D*(P_80);
+
+/* For second dispensing - weighted average */
+ELSE IF t_nm2=. THEN e_n = q_D*( (3/6)*(Date_of_Supply-t_nm1)/q_nm1 + (2/6)*(P_80) + (1/6)*(P_80) );
+
+/* For third and later - more personalised */
+ELSE IF t_nm3=. THEN e_n = q_D*( (3/6)*(Date_of_Supply-t_nm1)/q_nm1 + (2/6)*(t_nm1-t_nm2)/q_nm2 + (1/6)*(P_80) );
+```
+
+The output dataset contains exposure histories with:
+
+- start_date/end_date: interval boundaries
+- es: exposure status (1=current, 2=recent, 3=former)
+- cens_date: censoring date (death or end of follow-up)
+- episode tracking variables
+
+## Implementation of `e_pop_estimate` macro
+
+```{r}
+# including necessary steps
+e_pop_estimate <- function() {
+  
+  # sort data by PPN and dispensing date
+  
+  # initialise variables and calculate dispensing intervals
+
+  # calculate days per unit following a dispensing day
+
+  # calculate the 80th percentile estimate
+  
+  return()
+}
+```
+
+
+## Implementation of `exposure_by_drug` macro
+
+```{r}
+# including necessary steps
+exposure_by_drug <- function() {
+  # subset dispensing data for the specific drug
+  
+  # merge population-level exposure estimate
+
+  # evaluation of exposure duration
+  
+  # calculate exposure number and assign exposure periods
+ 
+  # generate exposure intervals (current, recent, and formerly exposed)
+  
+  # generate final dataframe
+  
+  return()
+}
+```
