@@ -126,17 +126,68 @@ e_pop_estimate <- function(item_code, macro_d) {
 # including necessary steps
 exposure_by_drug <- function() {
   # subset dispensing data for the specific drug
+  macro_d_temp <- macro_d %>%
+    filter(group == drug_number & Date_of_Supply >= Date_of_Supply_index)
+  
+  # checks
+  print(head(macro_d_temp, 5))
   
   # merge population-level exposure estimate
-
+  e_est_macro <- combined_item_code3 %>%
+    filter(group == drug_number) %>%
+    select(group, P_80)
+  
+  macro_d_temp <- merge(macro_d_temp, e_est_macro, by = "all")
+  
   # evaluation of exposure duration
+  macro_d1 <- macro_d_temp %>%
+    mutate(recent_exp = 7, # max length of recent exposure period
+           # for the 1st observation, set all parameters to zero/missing
+           ep_num = 0,
+           episode_dispensing = 0,
+           t_nm1 = NA,
+           t_nm2 = NA,
+           t_nm3 = NA,
+           q_nm1 = NA,
+           q_nm2 = NA,
+           q_nm3 = NA,
+           e_n = 99999999, # as per SAS code
+           first_date = Date_of_Supply,
+           unique_ep_id = NA) %>%
+    group_by(PPN) %>%
+    mutate(t_nm1 = ifelse(episode_dispensing >= 1, last_time, NA),
+           q_nm1 = ifelse(episode_dispensing >= 1, last_q, NA)) %>%
+    ungroup()
   
   # calculate exposure number and assign exposure periods
- 
-  # generate exposure intervals (current, recent, and formerly exposed)
+  macro_d1 <- macro_d1 %>%
+    mutate(e_n = q_D * P_80)
+  
+  # need to create episode data and apply exposure calculation logic
+  macro_d2 <- macro_d1 %>%
+    arrange(PPN, desc(Date_of_Supply)) %>%
+    mutate(PPN1 = lag(PPN),
+           SEE1 = lag(Date_of_Supply),
+           EP1 = lag(ep_num)) %>%
+    group_by(PPN) %>%
+    mutate(SEE1 = ifelse(first(PPN), '31DEC9999', SEE1), # as per SAS code
+           last = ifelse(first(PPN), 1, last)) %>%
+    ungroup()        
+  
+  # generate exposure intervals (current / recent / formerly exposed)
+  macro_episodes <- macro_d2 %>%
+    mutate(es = 1, # = currently exposed
+           start_date = Date_of_Supply - 1,
+           end_date = pmin(Date_of_Supply + e_n - 1, SEE1 - 1, DeathDate, EndDate),
+           cens_date = ifelse(!is.na(DeathDate), DeathDate, EndDate))
+  
+  # checks
+  print(head(macro_episodes, 50))
   
   # generate final dataframe
+  output_data <- macro_episodes %>%
+    select(PPN, start_date, end_date, es, cens_date)
   
-  return()
+  return(output_data)
 }
 ```
