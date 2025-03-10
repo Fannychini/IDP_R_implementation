@@ -72,17 +72,50 @@ The output dataset contains exposure histories with:
 
 ```{r}
 # including necessary steps
-e_pop_estimate <- function() {
+# stick to the same variable names
+e_pop_estimate <- function(item_code, macro_d) {
   
   # sort data by PPN and dispensing date
+  macro_d <- macro_d %>%
+    arrange(PPN, Date_of_Supply)
   
   # initialise variables and calculate dispensing intervals
-
-  # calculate days per unit following a dispensing day
-
-  # calculate the 80th percentile estimate
+  e_pope <- macro_d %>%
+    filter(group == item_code) %>%
+    mutate(last_time = NA,
+           last_q = NA,
+           new_episode = 0,
+           t_nm1 = NA,
+           q_nm1 = NA) %>%
+    group_by(PPN) %>%
+    mutate(t_nm1 = lag(last_time),
+           q_nm1 = lag(last_q),
+           last_q = q_D,
+           last_time = Date_of_Supply) %>%
+    filter(is.na(t_nm1) | Date_of_Supply - t_nm1 >= 365) %>%
+    mutate(new_episode = 1) %>%
+    ungroup()
   
-  return()
+  # check output
+  print(head(e_pope, 50))
+  
+  # calculate days per unit following a dispensing day
+  e_pop_est <- e_pope %>%
+    mutate(dif = Date_of_Supply - t_nm1, e_pop_est = dif / q_nm1) %>%
+    group_by(PPN) %>%
+    mutate(first_interval = ifelse(first(PPN), 1, 0)) %>%
+    ungroup()
+  
+  # check again
+  print(head(e_pop_est, 50))
+  
+  # calculate the 80th percentile estimate
+  e_pop_est_summary <- e_pop_est %>%
+    summarise(P_80 = quantile(e_pop_est, 0.8, na.rm = TRUE))
+  
+  print(e_pop_est_summary)
+  
+  return(e_pop_est_summary)
 }
 ```
 
