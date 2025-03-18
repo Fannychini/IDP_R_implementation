@@ -194,7 +194,8 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   #' 
   #' @param patient_data data for a single patient
   #' @return processed data with exposure calculations
-  calculate_patient_exposure <- function(patient_data) {
+  calculate_patient_exposure <- function(patient_data) { 
+    # ? perhaps should consider having recent_exposure_window as parameter
     # init necessary variables
     n_rows <- nrow(patient_data)
     
@@ -272,23 +273,32 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
         }
         episode_dispensing <- episode_dispensing + 1
         
-        # calculate exposure days using weighted formula
-        !!TODO 
-        # need checks if divide by 0?
+        # helper fct include safe division
+        safe_divide <- function(numerator, denominator, default_value) {
+          ifelse(denominator > 0, numerator / denominator, default_value)
+        }
+        
+        # calculate exposure days using weighted formula, using the helper
         if (is.na(t_nm1)) {
           e_n <- current_q * patient_data$P_80[i]
         } else if (is.na(t_nm2)) {
-          e_n <- current_q * ((3/6) * as.numeric(current_time - t_nm1) / q_nm1 + 
+          term1 <- safe_divide(as.numeric(current_time - t_nm1), q_nm1, patient_data$P_80[i])
+          e_n <- current_q * ((3/6) * term1 + 
                               (2/6) * patient_data$P_80[i] + 
                               (1/6) * patient_data$P_80[i])
         } else if (is.na(t_nm3)) {
-          e_n <- current_q * ((3/6) * as.numeric(current_time - t_nm1) / q_nm1 + 
-                              (2/6) * as.numeric(t_nm1 - t_nm2) / q_nm2 + 
+          term1 <- safe_divide(as.numeric(current_time - t_nm1), q_nm1, patient_data$P_80[i])
+          term2 <- safe_divide(as.numeric(t_nm1 - t_nm2), q_nm2, patient_data$P_80[i])
+          e_n <- current_q * ((3/6) * term1 + 
+                              (2/6) * term2 + 
                               (1/6) * patient_data$P_80[i])
         } else {
-          e_n <- current_q * ((3/6) * as.numeric(current_time - t_nm1) / q_nm1 + 
-                              (2/6) * as.numeric(t_nm1 - t_nm2) / q_nm2 + 
-                              (1/6) * as.numeric(t_nm2 - t_nm3) / q_nm3)
+          term1 <- safe_divide(as.numeric(current_time - t_nm1), q_nm1, patient_data$P_80[i])
+          term2 <- safe_divide(as.numeric(t_nm1 - t_nm2), q_nm2, patient_data$P_80[i])
+          term3 <- safe_divide(as.numeric(t_nm2 - t_nm3), q_nm3, patient_data$P_80[i])
+          e_n <- current_q * ((3/6) * term1 + 
+                              (2/6) * term2 + 
+                              (1/6) * term3)
         }
       }
       
