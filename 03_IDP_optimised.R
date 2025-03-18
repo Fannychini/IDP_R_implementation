@@ -14,9 +14,66 @@ sessionInfo()
 # This is the optimised R implementation of IDP 
 # from https://github.com/c-bharat/IDP_exposure_method
 
+## helper functions ----
+
+### check the dates ----
+#' validate date in a dataframe
+#' 
+#' @param data df to validate
+#' @param date_cols vector of column names that should be dates
+#' @return input df
+#' 
+validate_dates <- function(data, date_cols) {
+  invalid_rows <- 0
+  for (col in date_cols) {
+    if (col %in% names(data)) {
+      date_vals <- data[[col]]
+      invalid <- !is.na(date_vals) & !inherits(date_vals, "Date")
+      invalid_rows <- invalid_rows + sum(invalid)
+    }
+  }
+  if (invalid_rows > 0) warning(paste0(invalid_rows, " rows with invalid date formats"))
+  return(data)
+}
+
+### check required variables ----
+#' validate required columns in a df
+#' 
+#' @param data df to validate
+#' @param required_cols vector of required column names
+#' @return get TRUE if ok, otherwise stops with error
+#' 
+validate_columns <- function(data, required_cols) {
+  missing_cols <- required_cols[!required_cols %in% names(data)]
+  if (length(missing_cols) > 0) {
+    stop(paste("missing required columns:", paste(missing_cols, collapse=", ")))
+  }
+  return(TRUE)
+}
+
+
 ## e_pop_estimate ----
+#' calculate population estimates for medication patterns
+#' 
+#' @description 
+#' analyses dispensing data to estimate typical patterns in a population,
+#' calculating percentiles of days/unit values
+#' 
+#' @param item_code the medication code to analyse
+#' @param macro_d the input dispensing data with required columns: 
+#' PPN, Date_of_Supply, q_D, group
+#' @return get a df of percentile values for days per unit (P_20, P_50, P_80, P_90)
+#' 
 e_pop_estimate <- function(item_code, macro_d) {
-  # all dates are properly formatted at the beginning
+  # validate required columns with helper
+  required_cols <- c("PPN", "Date_of_Supply", "q_D", "group")
+  validate_columns(macro_d, required_cols)
+  
+  # validate dates with helper
+  date_cols <- c("Date_of_Supply", "DeathDate", "Date_of_Supply_index")
+  macro_d <- validate_dates(macro_d, date_cols)
+  
+  # all dates are properly formatted
   macro_d <- macro_d %>%
     mutate(across(contains("date") | contains("Date"), as.Date))
   
@@ -51,7 +108,7 @@ e_pop_estimate <- function(item_code, macro_d) {
   if (nrow(e_pope) > 0) {
     e_pope[, `:=`(dif = as.numeric(Date_of_Supply - t_nm1),
                   e_pop_est = as.numeric(Date_of_Supply - t_nm1) / q_nm1)]
-    # ! if zero values
+    # ! if zero or NA values
     e_pope[q_nm1 == 0 | is.na(q_nm1), e_pop_est := NA]
   
     e_pope[, first_interval := seq_len(.N) == 1, by = PPN]
@@ -82,14 +139,38 @@ e_pop_estimate <- function(item_code, macro_d) {
 }
 
 
+
 ## exposure_by_drug ----
-exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3, output_name) {
+#' calculate medication exposure periods using IDP
+#' 
+#' @description 
+#' process dispensing data to create exposure periods (current, recent, former)
+#' for each PPN based on their dispensing pattern and population estimates.
+#' 
+#' @param drug_number medication code
+#' @param macro_d df with dispensing data
+#' @param EndDate study end date
+#' @param combined_item_code3 population estimates from e_pop_estimate
+#' @param output_name name for the output df in global environment
+#' @param new_episode_threshold days threshold for defining new episodes (default 365)
+#' @param recent_exposure_window days for recent exposure window (default 7)
+#' @return get a df with exposure periods
+#' 
+exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3, 
+                             output_name, new_episode_threshold = 365, 
+                             recent_exposure_window = 7) {
+  
+  # validate required columns with helper
+  required_cols <- c("PPN", "Date_of_Supply", "q_D", "group", "Date_of_Supply_index")
+  validate_columns(macro_d, required_cols)
+  
+  # validate dates with helper
+  date_cols <- c("Date_of_Supply", "DeathDate", "Date_of_Supply_index")
+  macro_d <- validate_dates(macro_d, date_cols)
+  
   # check all dates are properly formatted at the beginning
   macro_d <- macro_d %>%
     mutate(across(contains("date") | contains("Date"), as.Date))
-  
-  # EndDate must be a date object
-  EndDate <- as.Date(EndDate)
   
   # subset dispensing data for the specific drug
   macro_d_temp <- macro_d %>%
@@ -106,6 +187,10 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   macro_d_temp <- merge(macro_d_temp, e_est_macro, by = "all")
   
   ### calculate IDP exposure per PPN ----
+  #' process per PPN data to calculate exposure periods
+  #' 
+  #' @param patient_data data for a single patient
+  #' @return processed data with exposure calculations
   calculate_patient_exposure <- function(patient_data) {
     # init necessary variables
     n_rows <- nrow(patient_data)
@@ -125,7 +210,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
     results$last_q <- numeric(n_rows)
     results$first_date <- as.Date(patient_data$Date_of_Supply[1])
     results$unique_ep_id <- integer(n_rows)
-    results$recent_exp <- 7
+    results$recent_exp <- recent_exposure_window
     results$no_formerly_exposed <- 0
     
     # init tracking variables
@@ -163,7 +248,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
       }
       
       # check for new episode
-      if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + e_n + 7))) {
+      if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + e_n + recent_exposure_window))) {
         # stqrt new episode
         ep_num <- ep_num + 1
         unique_ep_id <- unique_ep_id + 1
@@ -178,13 +263,15 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
       } else {
         # continue episode
         # check if formerly exposed
-        if (!is.na(t_nm1) && current_time > (t_nm1 + e_n + 7)) {
+        if (!is.na(t_nm1) && current_time > (t_nm1 + e_n + recent_exposure_window)) {
           ep_num <- ep_num + 1
           results$no_formerly_exposed[i] <- 1
         }
         episode_dispensing <- episode_dispensing + 1
         
         # calculate exposure days using weighted formula
+        !!TODO 
+        # need checks if divide by 0?
         if (is.na(t_nm1)) {
           e_n <- current_q * patient_data$P_80[i]
         } else if (is.na(t_nm2)) {
