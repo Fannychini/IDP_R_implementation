@@ -49,10 +49,11 @@ e_pop_estimate <- function(item_code, macro_d) {
   
   # calculate days per unit following a dispensing day
   if (nrow(e_pope) > 0) {
-    e_pope[, `:=`(
-      dif = as.numeric(Date_of_Supply - t_nm1),
-      e_pop_est = as.numeric(Date_of_Supply - t_nm1) / q_nm1)]
-    
+    e_pope[, `:=`(dif = as.numeric(Date_of_Supply - t_nm1),
+                  e_pop_est = as.numeric(Date_of_Supply - t_nm1) / q_nm1)]
+    # ! if zero values
+    e_pope[q_nm1 == 0 | is.na(q_nm1), e_pop_est := NA]
+  
     e_pope[, first_interval := seq_len(.N) == 1, by = PPN]
     
     # checks
