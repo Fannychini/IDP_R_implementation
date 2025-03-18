@@ -172,22 +172,25 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   macro_d <- macro_d %>%
     mutate(across(contains("date") | contains("Date"), as.Date))
   
-  # subset dispensing data for the specific drug
-  macro_d_temp <- macro_d %>%
-    filter(group == drug_number & Date_of_Supply >= Date_of_Supply_index) %>%
-    mutate(all = 1) # using this for merging later
-  
+  # removed key for merge as it is problematic, instead:
   # get population estimate
   e_est_macro <- combined_item_code3 %>%
     filter(group == drug_number) %>%
-    select(group, P_80) %>%
-    mutate(all = 1) # using this for merging later
+    select(group, P_80)
   
-  # merge population estimate with dispensing data
-  macro_d_temp <- merge(macro_d_temp, e_est_macro, by = "all")
+  # check that there exactly one value
+  if(nrow(e_est_macro) != 1) {
+    stop(paste0("there is more than 1 value for p80 estimate for drug number ", drug_number))
+  }
+  
+  # add to dispensing data directly
+  P_80_value <- e_est_macro$P_80[1]
+  macro_d_temp <- macro_d %>%
+    filter(group == drug_number & Date_of_Supply >= Date_of_Supply_index) %>%
+    mutate(P_80 = P_80_value)
   
   ### calculate IDP exposure per PPN ----
-  #' process per PPN data to calculate exposure periods
+  #' process data per PPN to calculate exposure periods
   #' 
   #' @param patient_data data for a single patient
   #' @return processed data with exposure calculations
@@ -312,7 +315,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   }
   
   ### process per PPN using helper function ----
-  # convert to df
+  # convert to dt
   dt <- as.data.table(macro_d_temp)
   
   # get unique PPN
@@ -348,32 +351,38 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   setorder(macro_d1, PPN, Date_of_Supply)
   
   ### create exposure intervals ----
+  #' create exposure intervals for a single dispensing record
+  #' 
+  #' @param row a single dispensing record
+  #' @return get a list of exposure intervals
+  #' 
   create_exposure_intervals <- function(row) {
-    # endpoints
+    # handle if NAs
+    death_end_date <- if(is.na(row$DeathDate)) EndDate else min(row$DeathDate, EndDate)
+    
+    # check if dispensing is after death/end date
+    if (row$Date_of_Supply > death_end_date) {
+      return(NULL) # want to return nothing if after deceased date 
+    }
+    
+    # calculate endpoints
+    # check if I forgot to use actual parameters
     current_end <- min(as.Date(row$Date_of_Supply) + row$e_n, 
                        as.Date(row$SEE1) - 1,
-                       as.Date(row$DeathDate),
-                       as.Date(EndDate),
+                       death_end_date,
                        na.rm = TRUE)
     
     recent_end <- min(as.Date(row$Date_of_Supply) + row$e_n + row$recent_exp,
                       as.Date(row$SEE1) - 1,
-                      as.Date(row$DeathDate),
-                      as.Date(EndDate),
+                      death_end_date,
                       na.rm = TRUE)
     
     former_end <- min(as.Date(row$SEE1) - 1,
-                      as.Date(row$DeathDate),
-                      as.Date(EndDate), 
+                      death_end_date,
                       na.rm = TRUE)
     
     # generate intervals
     intervals <- list()
-    
-    # check if dispensing is after death/end date
-    if (row$Date_of_Supply > min(row$DeathDate, EndDate, na.rm = TRUE)) {
-      return(NULL) # return nothing if after deceased date 
-    }
     
     # es=1 -- current exposure interval
     interval1 <- row
@@ -383,7 +392,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
     intervals[[1]] <- interval1
     
     # es=2 -- recent exposure interval (if remaining time true)
-    if (current_end < min(row$SEE1 - 1, row$DeathDate, EndDate, na.rm = TRUE)) {
+    if (current_end < min(as.Date(row$SEE1) - 1, death_end_date, na.rm = TRUE)) {
       interval2 <- row
       interval2$es <- 2L
       interval2$start_date <- as.Date(current_end) + 1
@@ -391,7 +400,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
       intervals[[2]] <- interval2
       
       # es=3 -- former exposure  
-      if (recent_end < min(row$SEE1 - 1, row$DeathDate, EndDate, na.rm = TRUE)) {
+      if (recent_end < min(as.Date(row$SEE1) - 1, death_end_date, na.rm = TRUE)) {
         interval3 <- row
         interval3$es <- 3L
         interval3$start_date <- as.Date(recent_end) + 1 
@@ -428,7 +437,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   macro_episodes[, `:=`(start_t = as.numeric(start_date - (Date_of_Supply_index - 1)),
                         end_t = as.numeric(end_date - (Date_of_Supply_index - 1)))]
   
-  # check dates again
+  # check dates again because there is yet another date issue
   date_cols <- c("t_nm1", "t_nm2", "t_nm3", "last_time", "first_date")
   for (col in date_cols) {
     if (col %in% names(macro_episodes)) {
@@ -454,7 +463,11 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   macro_episodes[[first_date_col]] <- as.Date(NA)
   
   ### optimise episode numbering ----
-  # helper function for specific PPN processing
+  #' process episode numbering for a single PPN
+  #' 
+  #' @param patient_data data for a single PPN
+  #' @return get processed data with episode numbering
+  #' 
   process_patient_episodes <- function(patient_data) {
     n_rows <- nrow(patient_data)
     
