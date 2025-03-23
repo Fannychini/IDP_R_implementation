@@ -156,11 +156,12 @@ e_pop_estimate <- function(item_code, macro_d) {
 #' @param output_name name for the output df in global environment
 #' @param new_episode_threshold days threshold for defining new episodes (default 365)
 #' @param recent_exposure_window days for recent exposure window (default 7)
+#' @param keep_tmp_variable keep temporary variables in final df (default FALSE)
 #' @return get a df with exposure periods
 #' 
 exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3, 
                              output_name, new_episode_threshold = 365, 
-                             recent_exposure_window = 7) {
+                             recent_exposure_window = 7, keep_tmp_variable = FALSE) {
   
   # validate required columns with helper
   required_cols <- c("PPN", "Date_of_Supply", "q_D", "group", "Date_of_Supply_index")
@@ -531,17 +532,69 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   # convert to dt for consistency
   output_data <- as.data.frame(output_data)
   
-  # assigm to global environment
+  # get rid of intermediate columns, should set = TRUE if needed for dvp/testing
+  if (!keep_tmp_variable) {
+    # tmp variables to drop -- see end of script for what they mean
+    intermediate_cols <- c("t_nm1", "t_nm2", "t_nm3", "q_nm1", "q_nm2", "q_nm3", 
+                           "last_time", "last_q", "no_formerly_exposed", 
+                           "lag_es", "PPN1", "EP1")
+    output_data <- output_data[, !names(output_data) %in% intermediate_cols]
+  }
+  
+  # assign to global environment
   assign(output_name, output_data, envir = .GlobalEnv)
   
   return(output_data)
 }
 
 
+## Column outputs detail if needed for debug or testing ----
+#
+# historical dispensing dates columns:
+# t_nm1 date of the most recent previous dispensing in this episode
+# t_nm2 date of the second most recent previous dispensing in this episode
+# t_nm3 date of the third most recent previous dispensing in this episode
+# last_time is most recent dispensing date
+#
+# historical dispensing quantities columns:
+# q_nm1 quantity dispensed at the most recent previous dispensing
+# q_nm2 quantity dispensed at the second most recent previous dispensing
+# q_nm3 quantity dispensed at the third most recent previous dispensing
+# last_q quantity from most recent dispensing
+#
+# tracking episodes columns: 
+# episode_dispensing is number of dispensings within current episode
+# unique_ep_id is unique identifier for each medication episode
+# first_date first dispensing date for this patient
+# ep_st_date start date of current episode
+# no_formerly_exposed indicator if ppn was formerly exposed before this dispensing
+# 
+# exposure interval columns:
+# es is exposure status (1=current, 2=recent, 3=former)
+# start_date start date of this exposure interval
+# end_date end date of this exposure interval
+# date_of_supply dispensing date (should be NA for es=2 & es=3)
+# pdays person-days for this interval
+# start_t days from index date to interval start
+# end_t days from index date to interval end
+# 
+# next dispensing columns:
+# PPN1 technically is ppn of next record, but not useful 
+# SEE1 date of next dispensing
+# EP1 episode number of next dispensing
+# last is indicator for last dispensing (with 1 == yes)
+# 
+# state transition tracking columns:
+# lag_es is exposure status of previous interval
+# rec_num is record number, where it increments as the exposure state changes
+#
+
+
 
 ## Could also add grace period option? ----
 # exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3, 
 #                              output_name, new_episode_threshold = 365, recent_exposure_window = 7, 
+#                              keep_tmp_variable = FALSE,
 #                              grace_period = 0) {
 # 
 #   grace period is not included in SAS code, at least did not spot it 
@@ -564,4 +617,6 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
 #                      death_end_date,
 #                      na.rm = TRUE)
 # }
+
+
 
