@@ -536,3 +536,32 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
   
   return(output_data)
 }
+
+
+
+## Could also add grace period option? ----
+# exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3, 
+#                              output_name, new_episode_threshold = 365, recent_exposure_window = 7, 
+#                              grace_period = 0) {
+# 
+#   grace period is not included in SAS code, at least did not spot it 
+#   if using grace with IDP, prob makes more sense to add grace days to current exposure periods,
+#   so would delay the start of the next episode
+#   if I were to add grace days to the input data, this may cause issues in the weighed formula or
+#   introduce assumptions about the average dispensing cycle -- or is this ok?
+#   !! TODO ask Malcolm about this
+#
+#   # grace period could be introduced where I calculate patient exposure, i.e. when checking for new episode:
+#   if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + as.integer(e_n) + recent_exposure_window + grace_period))) {
+#     # start new episode code
+#   }
+#   
+#   # and also would need it for when I calculate exposure end:
+#   current_end <- min(as.Date(row$Date_of_Supply) + 
+#                        as.integer(row$e_n) + 
+#                        grace_period, # <- here 
+#                      as.Date(row$SEE1) - 1,
+#                      death_end_date,
+#                      na.rm = TRUE)
+# }
+
