@@ -107,9 +107,9 @@ e_pop_estimate <- function(item_code, macro_d) {
   
   # calculate days per unit following a dispensing day
   if (nrow(e_pope) > 0) {
-    # as.numeric causing issues with day calculation
-    e_pope[, `:=`(dif = as.integer(Date_of_Supply - t_nm1), 
-                  e_pop_est = as.integer(Date_of_Supply - t_nm1) / q_nm1)]
+    # here keeping as.numeric as don't want to truncate too early -- trying to match SAS intnx 
+    e_pope[, `:=`(dif = as.numeric(Date_of_Supply - t_nm1), 
+                  e_pop_est = as.numeric(Date_of_Supply - t_nm1) / q_nm1)]
     # ! if zero or NA values
     e_pope[q_nm1 == 0 | is.na(q_nm1), e_pop_est := NA]
   
@@ -260,8 +260,8 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
       }
       
       # check for new episode
-      # adding as.integer here to avoid issues with e_n
-      if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + as.integer(e_n) + recent_exposure_window))) {
+      # using ceiling here to avoid truncating days
+      if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + ceiling(e_n) + recent_exposure_window))) {
         # stqrt new episode
         ep_num <- ep_num + 1
         unique_ep_id <- unique_ep_id + 1
@@ -275,8 +275,8 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
         e_n <- current_q * patient_data$P_80[i]
       } else {
         # continue episode
-        # check if formerly exposed / adding as.integer to ensure no issues with e_n
-        if (!is.na(t_nm1) && current_time > (t_nm1 + as.integer(e_n) + recent_exposure_window)) {
+        # check if formerly exposed / using ceiling here too
+        if (!is.na(t_nm1) && current_time > (t_nm1 + ceiling(e_n) + recent_exposure_window)) {
           ep_num <- ep_num + 1
           results$no_formerly_exposed[i] <- 1
         }
@@ -288,23 +288,24 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
         }
         
         # calculate exposure days using weighted formula, using the helper
+        # here keeping as.numeric as don't want to truncate too early -- trying to match SAS intnx
         if (is.na(t_nm1)) {
           e_n <- current_q * patient_data$P_80[i]
         } else if (is.na(t_nm2)) {
-          term1 <- safe_divide(as.integer(current_time - t_nm1), q_nm1, patient_data$P_80[i]) # again issues with as.numeric
+          term1 <- safe_divide(as.numeric(current_time - t_nm1), q_nm1, patient_data$P_80[i]) 
           e_n <- current_q * ((3/6) * term1 + 
                               (2/6) * patient_data$P_80[i] + 
                               (1/6) * patient_data$P_80[i])
         } else if (is.na(t_nm3)) {
-          term1 <- safe_divide(as.integer(current_time - t_nm1), q_nm1, patient_data$P_80[i]) # again issues with as.numeric
-          term2 <- safe_divide(as.integer(t_nm1 - t_nm2), q_nm2, patient_data$P_80[i])
+          term1 <- safe_divide(as.numeric(current_time - t_nm1), q_nm1, patient_data$P_80[i]) 
+          term2 <- safe_divide(as.numeric(t_nm1 - t_nm2), q_nm2, patient_data$P_80[i])
           e_n <- current_q * ((3/6) * term1 + 
                               (2/6) * term2 + 
                               (1/6) * patient_data$P_80[i])
         } else {
-          term1 <- safe_divide(as.integer(current_time - t_nm1), q_nm1, patient_data$P_80[i]) # again issues with as.numeric
-          term2 <- safe_divide(as.integer(t_nm1 - t_nm2), q_nm2, patient_data$P_80[i])
-          term3 <- safe_divide(as.integer(t_nm2 - t_nm3), q_nm3, patient_data$P_80[i])
+          term1 <- safe_divide(as.numeric(current_time - t_nm1), q_nm1, patient_data$P_80[i]) 
+          term2 <- safe_divide(as.numeric(t_nm1 - t_nm2), q_nm2, patient_data$P_80[i])
+          term3 <- safe_divide(as.numeric(t_nm2 - t_nm3), q_nm3, patient_data$P_80[i])
           e_n <- current_q * ((3/6) * term1 + 
                               (2/6) * term2 + 
                               (1/6) * term3)
@@ -385,15 +386,14 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
     }
     
     # calculate endpoints
-    current_end <- min(as.Date(row$Date_of_Supply) + 
-                         as.integer(row$e_n), # adding as.integer here too
+    # !! trying to align to SAS intnx, as.integer / as.numeric truncate to lower
+    # so using ceiling
+    current_end <- min(as.Date(row$Date_of_Supply) + ceiling(row$e_n), # explicitly use ceiling
                        as.Date(row$SEE1) - 1,
                        death_end_date,
                        na.rm = TRUE)
     
-    recent_end <- min(as.Date(row$Date_of_Supply) + 
-                        as.integer(row$e_n) + # adding as.integer here too
-                        as.integer(row$recent_exp), # adding as.integer here too
+    recent_end <- min(as.Date(row$Date_of_Supply) + ceiling(row$e_n + row$recent_exp), # explicitly use ceiling
                       as.Date(row$SEE1) - 1,
                       death_end_date,
                       na.rm = TRUE)
