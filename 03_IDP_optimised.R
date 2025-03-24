@@ -119,13 +119,19 @@ e_pop_estimate <- function(item_code, macro_d) {
     print("first 50 rows of e_pop_est:")
     print(head(e_pope, 50))
     
-    # calculate percentiles
+    # calculate percentiles, using type 2 as this corresponds to SAS default as per 
+    # Wicklin, R. (2017) Sample quantiles: A comparison of 9 definitions; SAS Blog. 
+    # https://blogs.sas.com/content/iml/2017/05/24/definitions-sample-quantiles.html
     percentiles <- data.frame(
       N = nrow(e_pope),
-      P_20 = quantile(e_pope$e_pop_est, 0.20, na.rm = TRUE),
-      P_50 = quantile(e_pope$e_pop_est, 0.50, na.rm = TRUE),
-      P_80 = quantile(e_pope$e_pop_est, 0.80, na.rm = TRUE),
-      P_90 = quantile(e_pope$e_pop_est, 0.90, na.rm = TRUE),
+      P_20 = quantile(e_pope$e_pop_est, 0.20, type=2, na.rm = TRUE),
+      P_50 = quantile(e_pope$e_pop_est, 0.50, type=2, na.rm = TRUE),
+      # included more pop estimates for further testing
+      P_60 = quantile(e_pope$e_pop_est, 0.60, type=2, na.rm = TRUE),
+      P_70 = quantile(e_pope$e_pop_est, 0.70, type=2, na.rm = TRUE),
+      P_80 = quantile(e_pope$e_pop_est, 0.80, type=2, na.rm = TRUE),
+      P_85 = quantile(e_pope$e_pop_est, 0.85, type=2, na.rm = TRUE),
+      P_90 = quantile(e_pope$e_pop_est, 0.90, type=2, na.rm = TRUE),
       item_code = item_code)
     
     # checks
@@ -135,11 +141,10 @@ e_pop_estimate <- function(item_code, macro_d) {
   } 
   else {
     warning("no continuous episodes found for this item_code")
-    return(data.frame(N = 0, P_20 = NA, P_50 = NA,
-                      P_80 = NA, P_90 = NA,  item_code = item_code))
+    return(data.frame(N = 0, P_20 = NA, P_50 = NA, P_60 = NA, P_70 = NA,
+                      P_80 = NA, P_85 = NA, P_90 = NA,  item_code = item_code))
   }
 }
-
 
 
 ## exposure_by_drug ----
@@ -589,9 +594,14 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
 # rec_num is record number, where it increments as the exposure state changes
 #
 
+## Malcolm : issues / questions ----
+# 1) quantile calculation in R vs SAS alignment (potentially fixed with type = 2)
+# 2) SAS uses intnx for dates and I am not sure how to fully align to it in R -- may cause difference in final output
+# 3) do we need to allow selection of pop quantile different to P80? SAS explicitly uses this one only
+# 4) grace period handling? -- see below 
 
 
-## Could also add grace period option? ----
+## Add grace period option? ----
 # exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3, 
 #                              output_name, new_episode_threshold = 365, recent_exposure_window = 7, 
 #                              keep_tmp_variable = FALSE,
