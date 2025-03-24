@@ -6,6 +6,8 @@
 library(tidyverse)
 library(lubridate)
 library(data.table)
+library(patchwork)
+library(beepr)
 
 ## Set seed for reproducibility
 set.seed(239)
@@ -27,14 +29,101 @@ df <- disp_data %>%
          Date_of_Supply = dispense_date, 
          q_D = quantity_dispensed) %>%
   # also need Date_of_Supply_index (starting date for each patient)
-  # will use min Date here
+  # will use min date here
   group_by(PPN) %>%
   mutate(Date_of_Supply_index = min(Date_of_Supply)) %>%
   ungroup() %>%
   # also need status and will set all NA 
   mutate(DeathDate = as.Date(NA))
 
-## Get population estimates ----
+# Knowing that I wanted to set the medications as:
+# "Levodrax" = regular ~30 day intervals
+# "Cyclobine" = ~21 day intervals (14 days on, 7 off)
+# "Biforalin" = ~14 day intervals
+# "Quartifuse" = ~90 day intervals
+# "Flexitol" = irregular intervals
+
+
+## Single drug analysis ----
+# Here we look at Flexitol
+
+### e_pop_estimate ----
+pop_output <- e_pop_estimate("Flexitol", df) %>%
+  mutate(group = as.character(item_code))
+
+### exposure_by_drug ----
+exposure_result <- exposure_by_drug(drug_number = "Flexitol",
+                                    macro_d = df,
+                                    EndDate = as.Date("2023-12-31"), 
+                                    # or max(df$Date_of_Supply) 
+                                    combined_item_code3 = pop_output,
+                                    new_episode_threshold = 365,  
+                                    recent_exposure_window = 7) %>%
+  mutate(PPN = factor(PPN)) %>%
+  mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
+
+### checks ----
+# summary by exposure status (1=current, 2=recent, 3=former)
+exposure_summary <- exposure_result %>%
+  group_by(es) %>%
+  summarise(patients = n_distinct(PPN),
+            total_days = sum(pdays),
+            avg_duration = mean(pdays))
+#   es      patients total_days avg_duration
+# 1 Current      200      65424        28.2 
+# 2 Recent       200       3381         5.50
+# 3 Former       175       3213         9.51
+
+# visuals for 5 PPNs
+exposure_5ppn <- exposure_result %>%
+  distinct(PPN) %>%
+  # sample 5 PPNs
+  slice_sample(n = 5) %>%
+  inner_join(exposure_result, by = "PPN")
+  
+ggplot(exposure_5ppn, aes(y=PPN, color=es)) +
+  geom_segment(aes(x=start_date+1, xend=end_date, yend=PPN)) +
+  geom_point(aes(x=Date_of_Supply)) +
+  theme_minimal()
+
+
+## SAS vs R ----
+compare_columns <- c("PPN", "group", "EP1", "first_date", "ep_st_date", 
+                     "start_date", "end_date", "episode_dispensing", "e_n", 
+                     "unique_ep_id", "SEE1", "last", "es", "pdays", "rec_num")
+
+### Run e_pop_estimate and exposure_by_drug ----
+#### e_pop_estimate ----
+pop_r <- e_pop_estimate("item_code", validation_data) %>%
+  mutate(group = as.character(item_code))
+
+#### exposure_by_drug ----
+exposure_r <- exposure_by_drug(drug_number = "item_code",
+                                    macro_d = validation_data,
+                                    EndDate = as.Date("2023-12-31"), 
+                                    # or max(validation_data$Date_of_Supply) 
+                                    combined_item_code3 = pop_output,
+                                    new_episode_threshold = 365,  
+                                    recent_exposure_window = 7) %>%
+  mutate(PPN = factor(PPN)) %>%
+  mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
+
+r_results <- exposure_r %>% arrange(PPN, start_date)
+
+### SAS results ----
+# load data
+# arrange for comparison
+sas_results <- exposure_sas %>% arrange(PPN, start_date)
+
+### Check differences in both implementations ----
+differences <- anti_join(r_results[, compare_columns], 
+                         sas_results[, compare_columns])
+
+
+
+## All codes at once analysis ----
+
+### Get population estimates ----
 unique_drugs <- unique(df$group)
 combined_item_code <- data.frame()
 
@@ -45,21 +134,15 @@ for (drug in unique_drugs) {
 
 combined_item_code3 <- combined_item_code %>%
   mutate(group = as.character(item_code))
-#          N       P_20 P_50       P_80      P_90  item_code      group
-# 20%  14800  0.9333333  1.0  1.0666667  1.100000   Levodrax   Levodrax
-# 20%1 14800  0.4761905  0.5  0.5238095  0.547619  Cyclobine  Cyclobine
-# 20%2 14800  0.9285714  1.0  1.0714286  1.071429  Biforalin  Biforalin
-# 20%3 14800 84.0000000 90.0 96.0000000 99.000000 Quartifuse Quartifuse
-# 20%4 14800  0.8333333  1.0  1.5000000  1.533333   Flexitol   Flexitol
+#          N       P_20 P_50      P_60       P_70       P_80      P_85      P_90  item_code      group
+# 20%  14800  0.9333333  1.0  1.033333  1.0333333  1.0666667  1.066667  1.100000   Levodrax   Levodrax
+# 20%1 14800  0.4761905  0.5  0.500000  0.5238095  0.5238095  0.547619  0.547619  Cyclobine  Cyclobine
+# 20%2 14800  0.9285714  1.0  1.000000  1.0714286  1.0714286  1.071429  1.071429  Biforalin  Biforalin
+# 20%3 14800 84.0000000 90.0 92.000000 94.0000000 96.0000000 97.000000 99.000000 Quartifuse Quartifuse
+# 20%4 14800  0.8333333  1.0  1.000000  1.0000000  1.5000000  1.500000  1.666667   Flexitol   Flexitol
 
-# Knowing that I wanted to set the medications as:
-# "Levodrax" = regular ~30 day intervals
-# "Cyclobine" = ~21 day intervals (14 days on, 7 off)
-# "Biforalin" = ~14 day intervals
-# "Quartifuse" = ~90 day intervals
-# "Flexitol" = irregular intervals
 
-## Calculate exposures ----
+### Calculate exposures ----
 # study end date
 end_date <- as.Date("2023-12-31")  
 
@@ -75,8 +158,13 @@ for (drug in unique_drugs) {
                                       combined_item_code3 = combined_item_code3,
                                       output_name = output_name,
                                       new_episode_threshold = 365,  
-                                      recent_exposure_window = 7)
+                                      recent_exposure_window = 7) %>%
+    mutate(PPN = factor(PPN)) %>%
+    mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
 }
+
+# this should generate several files in global environment, as per all drugs listed
+# in this case, exposure_Biforalin, exposure_Cyclobine, etc.
 
 # may need to fix warning at some point
 # Warning message:
@@ -85,9 +173,12 @@ for (drug in unique_drugs) {
   # so that := can add this new column by reference. At an earlier point, this data.table 
   # has been copied by R (or was created manually using structure() or similar).
 
-## Analyse exposure for one drug ----
+### Analyse exposure for one drug ----
+# or access through exposure_Levodrax
 drug_example <- unique_drugs[1] # Levodrax
-exposure_data <- get(paste0("exposure_", drug_example))
+exposure_data <- get(paste0("exposure_", drug_example)) %>%
+  mutate(PPN = factor(PPN)) %>%
+  mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
 
 # summary by exposure status (1=current, 2=recent, 3=former)
 exposure_summary <- exposure_data %>%
@@ -98,45 +189,37 @@ exposure_summary <- exposure_data %>%
 
 print(exposure_summary)
 #      es patients total_days avg_duration
-# 1     1      200    70932.        28.5  
-# 2     2      200      393.         0.599
-# 3     3        1       -0.5       -0.5  
-
-# problem with calculations for es=3
-problematic_record <- exposure_data %>%
-  filter(es == 3 & pdays < 0)
-# PPN 143, start_date and end_date are the same 2023-06-01
-# calculated pdays is -0.5 so there is an issue in the function
-# this is because of date handling with as.numeric, need to change to as.integer to match SAS
-
-# Rerun with corrected as.integer in function:
-#      es patients total_days avg_duration
-# 1     1      200      70590        28.4 
-# 2     2      200        714         1.05
-# 3     3        1          0         0   
+# 1     1      200      71200        28.6 
+# 2     2      193        782         1.84
 
 check_143 <- exposure_data %>% filter(PPN %in% c('143')) %>% arrange(Date_of_Supply)
 
-# PPN-level analysis 
+# check first PPN
 pat_example <- exposure_data$PPN[1]
 pat_timeline <- exposure_data %>%
   filter(PPN == pat_example) %>%
-  select(PPN, start_date, end_date, es, pdays) %>%
-  arrange(start_date)
+  arrange(start_date) %>% print()
+# seems ok
 
-print(pat_timeline) # seems ok
+ggplot(pat_timeline, aes(y=PPN, color=es)) +
+  geom_segment(aes(x=start_date+1, xend=end_date, yend=PPN)) +
+  geom_point(aes(x=Date_of_Supply)) +
+  theme_minimal()
 
-## Exposure distribution viuals ----
+### Exposure distribution visuals ----
 exposure_data %>%
-  mutate(exposure_type = case_when(
-    es == 1 ~ "current",
-    es == 2 ~ "recent",
-    es == 3 ~ "former")) %>%
-  ggplot(aes(x = pdays, fill = exposure_type)) +
+  ggplot(aes(x = pdays, fill = es)) +
   geom_histogram(bins = 30) +
-  facet_wrap(~exposure_type, scales = "free_y") +
+  facet_wrap(~es, scales = "free_y") +
   labs(title = paste("Distribution of exposure days for", drug_example),
        x = "person-days",
        y = "frequency",
        fill = "exposure type") +
   theme_minimal()
+
+
+
+
+
+
+

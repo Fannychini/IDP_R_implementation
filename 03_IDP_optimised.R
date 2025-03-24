@@ -62,7 +62,8 @@ validate_columns <- function(data, required_cols) {
 #' @param item_code the medication code to analyse
 #' @param macro_d the input dispensing data with required columns: 
 #' PPN, Date_of_Supply, q_D, group
-#' @return get a df of percentile values for days per unit (P_20, P_50, P_80, P_90)
+#' @return get a df of percentile values for days per unit 
+#' (P_20, P_50, P_60, P_70, P_80, P_85, P_90)
 #' 
 e_pop_estimate <- function(item_code, macro_d) {
   # validate required columns with helper
@@ -158,14 +159,14 @@ e_pop_estimate <- function(item_code, macro_d) {
 #' @param macro_d df with dispensing data
 #' @param EndDate study end date
 #' @param combined_item_code3 population estimates from e_pop_estimate
-#' @param output_name name for the output df in global environment
+#' @param output_name name for the output df in global environment (default NULL)
 #' @param new_episode_threshold days threshold for defining new episodes (default 365)
 #' @param recent_exposure_window days for recent exposure window (default 7)
 #' @param keep_tmp_variable keep temporary variables in final df (default FALSE)
 #' @return get a df with exposure periods
 #' 
 exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3, 
-                             output_name, new_episode_threshold = 365, 
+                             output_name = NULL, new_episode_threshold = 365, 
                              recent_exposure_window = 7, keep_tmp_variable = FALSE) {
   
   # validate required columns with helper
@@ -546,9 +547,11 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
     output_data <- output_data[, !names(output_data) %in% intermediate_cols]
   }
   
-  # assign to global environment
-  assign(output_name, output_data, envir = .GlobalEnv)
-  
+  # assign to global environment if output_name is provided
+  if (!is.null(output_name)) {
+    assign(output_name, output_data, envir = .GlobalEnv)
+  }
+
   return(output_data)
 }
 
@@ -615,18 +618,20 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
 #   !! TODO ask Malcolm about this
 #
 #   # grace period could be introduced where I calculate patient exposure, i.e. when checking for new episode:
-#   if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + as.integer(e_n) + recent_exposure_window + grace_period))) {
+#   if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + ceiling(e_n) + recent_exposure_window + grace_period))) {
 #     # start new episode code
 #   }
 #   
 #   # and also would need it for when I calculate exposure end:
-#   current_end <- min(as.Date(row$Date_of_Supply) + 
-#                        as.integer(row$e_n) + 
-#                        grace_period, # <- here 
+#   current_end <- min(as.Date(row$Date_of_Supply) + ceiling(row$e_n) + # explicitly use ceiling
+#                        grace_period, 
+#                      as.Date(row$SEE1) - 1,
+#                      death_end_date,
+#                      na.rm = TRUE)
+#
+#   recent_end <- min(as.Date(row$Date_of_Supply) + ceiling(row$e_n + row$recent_exp) + # explicitly use ceiling
+#                        grace_period,
 #                      as.Date(row$SEE1) - 1,
 #                      death_end_date,
 #                      na.rm = TRUE)
 # }
-
-
-
