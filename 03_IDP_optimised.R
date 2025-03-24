@@ -411,7 +411,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
     if (current_end < min(as.Date(row$SEE1) - 1, death_end_date, na.rm = TRUE)) {
       interval2 <- row
       interval2$es <- 2L
-      interval2$start_date <- as.Date(current_end) + 1
+      interval2$start_date <- as.Date(current_end) # + 1 caused issues in recent exposure calculation
       interval2$end_date <- as.Date(recent_end)
       intervals[[2]] <- interval2
       
@@ -419,7 +419,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
       if (recent_end < min(as.Date(row$SEE1) - 1, death_end_date, na.rm = TRUE)) {
         interval3 <- row
         interval3$es <- 3L
-        interval3$start_date <- as.Date(recent_end) + 1 
+        interval3$start_date <- as.Date(recent_end) # + 1 caused issues in former exposure calculation
         interval3$end_date <- as.Date(former_end)
         intervals[[3]] <- interval3
       }
@@ -537,7 +537,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
     # tmp variables to drop -- see end of script for what they mean
     intermediate_cols <- c("t_nm1", "t_nm2", "t_nm3", "q_nm1", "q_nm2", "q_nm3", 
                            "last_time", "last_q", "no_formerly_exposed", 
-                           "lag_es", "PPN1", "EP1")
+                           "lag_es", "PPN1") # , "EP1"
     output_data <- output_data[, !names(output_data) %in% intermediate_cols]
   }
   
@@ -579,7 +579,7 @@ exposure_by_drug <- function(drug_number, macro_d, EndDate, combined_item_code3,
 # end_t days from index date to interval end
 # 
 # next dispensing columns:
-# PPN1 technically is ppn of next record, but not useful 
+# PPN1 technically is ppn of next record, but not useful and have not populated it 
 # SEE1 date of next dispensing
 # EP1 episode number of next dispensing
 # last is indicator for last dispensing (with 1 == yes)
