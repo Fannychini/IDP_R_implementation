@@ -65,6 +65,9 @@ library(tidyverse)
 library(data.table)
 library(lubridate)
 
+# Source R implementation
+source("03_IDP_optimised.R")
+
 # Load data
 data <- read_csv("data.csv")
 
