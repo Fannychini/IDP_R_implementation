@@ -88,7 +88,7 @@ ggplot(exposure_5ppn, aes(y=PPN, color=es)) +
 
 
 ## SAS vs R ----
-compare_columns <- c("PPN", "group", "EP1", "first_date", "ep_st_date", 
+compare_columns <- c("PPN", "group", "ep_num1", "first_1_date", "ep_st_date", 
                      "start_date", "end_date", "episode_dispensing", "e_n", 
                      "unique_ep_id", "SEE1", "last", "es", "pdays", "rec_num")
 
@@ -99,12 +99,12 @@ pop_r <- e_pop_estimate("item_code", validation_data) %>%
 
 #### exposure_by_drug ----
 exposure_r <- exposure_by_drug(drug_number = "item_code",
-                                    macro_d = validation_data,
-                                    EndDate = as.Date("2023-12-31"), 
-                                    # or max(validation_data$Date_of_Supply) 
-                                    combined_item_code3 = pop_output,
-                                    new_episode_threshold = 365,  
-                                    recent_exposure_window = 7) %>%
+                               macro_d = validation_data,
+                               EndDate = as.Date("2023-12-31"), 
+                               # or max(validation_data$Date_of_Supply) 
+                               combined_item_code3 = pop_output,
+                               new_episode_threshold = 365,  
+                               recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
   mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
 
