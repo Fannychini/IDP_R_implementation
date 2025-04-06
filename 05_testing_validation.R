@@ -18,44 +18,34 @@ source("03_IDP_optimised.R")
 source("06_generate_data.R")
 
 ## Generate data ----
-disp_data <- generate_diverse_data(n_patients_per_med = 200, n_dispenses_per_patient = 75)
+disp_data <- generate_diverse_data(n_patients_per_med = 50, n_dispenses_per_patient = 5)
 head(disp_data)
+# write.csv(disp_data, file = "data_april.csv")
 
 ## Prep data ----
-# rename columns to match function requirements
+# Data requirements:
+# individual-level daily dispensing data, where dispensings on the same day for the same medicine(s) are combined/summed together (daily total dispensed)
+
+# Col names if want to match function requirements:
+# rename columns 
 df <- disp_data %>%
   rename(PPN = patient_id,               
-         group = medication,             
-         Date_of_Supply = dispense_date, 
-         q_D = quantity_dispensed) %>%
-  # also need Date_of_Supply_index (starting date for each patient)
-  # will use min date here
-  group_by(PPN) %>%
-  mutate(Date_of_Supply_index = min(Date_of_Supply)) %>%
-  ungroup() %>%
-  # also need status and will set all NA 
-  mutate(DeathDate = as.Date(NA))
-
-# Knowing that I wanted to set the medications as:
-# "Levodrax" = regular ~30 day intervals
-# "Cyclobine" = ~21 day intervals (14 days on, 7 off)
-# "Biforalin" = ~14 day intervals
-# "Quartifuse" = ~90 day intervals
-# "Flexitol" = irregular intervals
+         Group = medication,             
+         DateSupplied = dispense_date, 
+         Quantity = quantity_dispensed)
 
 
 ## Single drug analysis ----
-# Here we look at Flexitol
+# Here we look at Levodrax
 
 ### e_pop_estimate ----
-pop_output <- e_pop_estimate("Flexitol", df) %>%
-  mutate(group = as.character(item_code))
+pop_output <- e_pop_estimate("Levodrax", df) 
 
 ### exposure_by_drug ----
-exposure_result <- exposure_by_drug(drug_number = "Flexitol",
+exposure_result <- exposure_by_drug(drug_code = "Levodrax",
                                     macro_d = df,
-                                    EndDate = as.Date("2023-12-31"), 
-                                    # or max(df$Date_of_Supply) 
+                                    EndDate = max(df$DateSupplied[df$Group == 'Levodrax']), 
+                                    # or as.Date("2023-12-31")
                                     combined_item_code3 = pop_output,
                                     new_episode_threshold = 365,  
                                     recent_exposure_window = 7) %>%
@@ -70,20 +60,25 @@ exposure_summary <- exposure_result %>%
             total_days = sum(pdays),
             avg_duration = mean(pdays))
 #   es      patients total_days avg_duration
-# 1 Current      200      65424        28.2 
-# 2 Recent       200       3381         5.50
-# 3 Former       175       3213         9.51
+# 1 Current       50       6944        27.8 
+# 2 Recent        37        134         2.73
+# 3 Former         3         18         6   
 
-# visuals for 5 PPNs
-exposure_5ppn <- exposure_result %>%
-  distinct(PPN) %>%
-  # sample 5 PPNs
-  slice_sample(n = 5) %>%
-  inner_join(exposure_result, by = "PPN")
-  
-ggplot(exposure_5ppn, aes(y=PPN, color=es)) +
+# # visuals for 5 PPNs
+# exposure_5ppn <- exposure_result %>%
+#   distinct(PPN) %>%
+#   # sample 5 PPNs
+#   slice_sample(n = 5) %>%
+#   inner_join(exposure_result, by = "PPN")
+#   
+# ggplot(exposure_5ppn, aes(y=PPN, color=es)) +
+#   geom_segment(aes(x=start_date+1, xend=end_date, yend=PPN)) +
+#   geom_point(aes(x=DateSupplied)) +
+#   theme_minimal()
+
+ggplot(exposure_result, aes(y=PPN, color=es)) +
   geom_segment(aes(x=start_date+1, xend=end_date, yend=PPN)) +
-  geom_point(aes(x=Date_of_Supply)) +
+  geom_point(aes(x=DateSupplied)) +
   theme_minimal()
 
 
@@ -94,15 +89,14 @@ compare_columns <- c("PPN", "group", "ep_num1", "first_1_date", "ep_st_date",
 
 ### Run e_pop_estimate and exposure_by_drug ----
 #### e_pop_estimate ----
-pop_r <- e_pop_estimate("item_code", validation_data) %>%
+pop_r <- e_pop_estimate("code", validation_data) %>%
   mutate(group = as.character(item_code))
 
 #### exposure_by_drug ----
-exposure_r <- exposure_by_drug(drug_number = "item_code",
+exposure_r <- exposure_by_drug(drug_code = "code",
                                macro_d = validation_data,
-                               EndDate = as.Date("2023-12-31"), 
-                               # or max(validation_data$Date_of_Supply) 
-                               combined_item_code3 = pop_output,
+                               EndDate = max(validation_data$Date_of_Supply),
+                               combined_item_code3 = pop_r,
                                new_episode_threshold = 365,  
                                recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
@@ -132,14 +126,13 @@ for (drug in unique_drugs) {
   combined_item_code <- rbind(combined_item_code, drug_percentiles)
 }
 
-combined_item_code3 <- combined_item_code %>%
-  mutate(group = as.character(item_code))
-#          N       P_20 P_50      P_60       P_70       P_80      P_85      P_90  item_code      group
-# 20%  14800  0.9333333  1.0  1.033333  1.0333333  1.0666667  1.066667  1.100000   Levodrax   Levodrax
-# 20%1 14800  0.4761905  0.5  0.500000  0.5238095  0.5238095  0.547619  0.547619  Cyclobine  Cyclobine
-# 20%2 14800  0.9285714  1.0  1.000000  1.0714286  1.0714286  1.071429  1.071429  Biforalin  Biforalin
-# 20%3 14800 84.0000000 90.0 92.000000 94.0000000 96.0000000 97.000000 99.000000 Quartifuse Quartifuse
-# 20%4 14800  0.8333333  1.0  1.000000  1.0000000  1.5000000  1.500000  1.666667   Flexitol   Flexitol
+combined_item_code3 <- combined_item_code 
+#          N       P_20 P_50      P_60       P_70       P_80      P_85      P_90      group
+# 20%  14800  0.9333333  1.0  1.033333  1.0333333  1.0666667  1.066667  1.100000   Levodrax
+# 20%1 14800  0.4761905  0.5  0.500000  0.5238095  0.5238095  0.547619  0.547619  Cyclobine
+# 20%2 14800  0.9285714  1.0  1.000000  1.0714286  1.0714286  1.071429  1.071429  Biforalin
+# 20%3 14800 84.0000000 90.0 92.000000 94.0000000 96.0000000 97.000000 99.000000 Quartifuse
+# 20%4 14800  0.8333333  1.0  1.000000  1.0000000  1.5000000  1.500000  1.666667   Flexitol
 
 
 ### Calculate exposures ----
@@ -152,7 +145,7 @@ for (drug in unique_drugs) {
   output_name <- paste0("exposure_", drug)
   
   # calculate exposures using exposure_by_drug function
-  exposure_result <- exposure_by_drug(drug_number = drug,
+  exposure_result <- exposure_by_drug(drug_code = drug,
                                       macro_d = df,
                                       EndDate = end_date,
                                       combined_item_code3 = combined_item_code3,
@@ -192,7 +185,7 @@ print(exposure_summary)
 # 1     1      200      71200        28.6 
 # 2     2      193        782         1.84
 
-check_143 <- exposure_data %>% filter(PPN %in% c('143')) %>% arrange(Date_of_Supply)
+check_143 <- exposure_data %>% filter(PPN %in% c('143')) %>% arrange(DateSupplied)
 
 # check first PPN
 pat_example <- exposure_data$PPN[1]
@@ -203,7 +196,7 @@ pat_timeline <- exposure_data %>%
 
 ggplot(pat_timeline, aes(y=PPN, color=es)) +
   geom_segment(aes(x=start_date+1, xend=end_date, yend=PPN)) +
-  geom_point(aes(x=Date_of_Supply)) +
+  geom_point(aes(x=DateSupplied)) +
   theme_minimal()
 
 ### Exposure distribution visuals ----

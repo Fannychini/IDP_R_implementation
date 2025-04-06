@@ -9,17 +9,29 @@ The IDP methodology provides a data-driven approach to estimate medication expos
 This R implementation is based on the methodology described in:
 > Bharat, C., Degenhardt, L., Pearson, S-A., et al. A data-informed approach using individualised dispensing patterns to estimate medicine exposure periods and dose from pharmaceutical claims data. Pharmacoepidemiol Drug Saf. 2023; 32(3): 352-365. doi:10.1002/pds.5567
 
+### Required formatting
+The input data must have these columns:
+
+- `PPN` person identifier
+- `Group` dedication code/identifier
+- `DateSupplied` dispensing date
+- `Quantity` quantity dispensed
+- `DateSupplied_index` starting date for analysis
+  - ! if not supplied, calculated as per min `DateSupplied` for each PPN
+- `DeathDate` date of death (can be NA)
+  - ! if not supplied, generated with NA as date
+
 ### Key Functions
 
 #### `e_pop_estimate()`
 
 Calculates population-level estimates of medication usage patterns.
 ```{r}
-e_pop_estimate(item_code, macro_d)
+e_pop_estimate(drug_code, macro_d)
 ```
 
 **Parameters:**
-- `item_code` medication code/identifier
+- `drug_code` medication code/identifier
 - `macro_d` dataframe with dispensing data
 
 **Returns:**
@@ -30,13 +42,13 @@ e_pop_estimate(item_code, macro_d)
 
 Calculates individual person exposure periods based on dispensing data.
 ```{r}
-exposure_by_drug(drug_number, macro_d, EndDate, combined_item_code3, 
+exposure_by_drug(drug_code, macro_d, EndDate, combined_item_code3, 
                  output_name = NULL, new_episode_threshold = 365,
                  recent_exposure_window = 7, keep_tmp_variable = FALSE)
 ```
 
 **Parameters:**
-- `drug_number` medication code/identifier
+- `drug_code` medication code/identifier
 - `macro_d` dataframe with dispensing data
 - `EndDate` study end date
 - `combined_item_code3` population estimates from `e_pop_estimate()`
@@ -48,15 +60,6 @@ exposure_by_drug(drug_number, macro_d, EndDate, combined_item_code3,
 **Returns:**
 - A dataframe with exposure periods for each person
 
-### Required formatting
-The input data must have these columns:
-
-- `PPN` person identifier
-- `group` dedication code/identifier
-- `Date_of_Supply` dispensing date
-- `q_D` quantity dispensed
-- `Date_of_Supply_index` starting date for analysis
-- `DeathDate` date of death (can be NA)
 
 ### Use of the R implementation
 ```{r}
@@ -71,15 +74,24 @@ source("03_IDP_optimised.R")
 # Load data
 data <- read_csv("data.csv")
 
+# Align with col name requirements
+# data <- data %>%
+#   rename(PPN = x1,               
+#          Group = x2,             
+#          DateSupplied = x3, 
+#          Quantity = x4,
+#          # optional
+#          DeathDate = x5,
+#          DateSupplied_index = x6)
+
 # Calculate population estimates
-pop_r <- e_pop_estimate("item_code", data) %>%
-  mutate(group = as.character(item_code))
+pop_r <- e_pop_estimate("code", data) 
 
 # Calculate exposure periods
-exposure_r <- exposure_by_drug(drug_number = "item_code",
+exposure_r <- exposure_by_drug(drug_code = "code",
                                macro_d = data,
-                               EndDate = as.Date("2023-12-31"), # or max(data$Date_of_Supply) 
-                               combined_item_code3 = pop_output,
+                               EndDate = as.Date("2023-12-31"), # or max(data$DateSupplied[df$Group == 'code'])
+                               combined_item_code3 = pop_r, # output from e_pop_estimate
                                new_episode_threshold = 365,  
                                recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
@@ -115,14 +127,13 @@ compare_columns <- c("PPN", "group", "ep_num1", "first_1_date", "ep_st_date",
 
 ## Run R functions
 # e_pop_estimate
-pop_r <- e_pop_estimate("item_code", validation_data) %>%
-  mutate(group = as.character(item_code))
+pop_r <- e_pop_estimate("item_code", validation_data) 
 
 # exposure_by_drug
-exposure_r <- exposure_by_drug(drug_number = "item_code",
+exposure_r <- exposure_by_drug(drug_code = "item_code",
                                macro_d = validation_data,
                                EndDate = as.Date("2023-12-31"), 
-                               combined_item_code3 = pop_output,
+                               combined_item_code3 = pop_r,
                                new_episode_threshold = 365,  
                                recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
