@@ -162,15 +162,15 @@ differences <- anti_join(r_results[, compare_columns],
 
 If you use this implementation in your research, please cite both the original paper and this repository:
 
-> Bharat, C., Degenhardt, L., Pearson, S-A., et al. A data-informed
-> approach using individualised dispensing patterns to estimate medicine
-> exposure periods and dose from pharmaceutical claims data.
-> Pharmacoepidemiol Drug Saf. 2023; 32(3): 352-365.
-> <doi:10.1002/pds.5567>
+   ```
+   Bharat, C., Degenhardt, L., Pearson, S-A., et al. A data-informed approach using individualised dispensing patterns to estimate medicine exposure periods and dose from pharmaceutical claims data.
+   Pharmacoepidemiol Drug Saf. 2023; 32(3): 352-365. doi:10.1002/pds.5567
+   ```
 
-> Franchini, F. (2025). R implementation of the individualised
-> dispensing patterns methodology. GitHub repository
-> <https://github.com/fannychini/IDP_R_implementation>
+   ```
+   Franchini F. (2025). R implementation of the individualised dispensing patterns methodology.
+   GitHub repository, https://github.com/fannychini/IDP_R_implementation
+   ```
 
 ### License
 
