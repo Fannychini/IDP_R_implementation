@@ -1,18 +1,15 @@
----
-editor_options: 
-  markdown: 
-    wrap: 72
----
-
 ## R implementation of Individualised Dispensing Patterns (IDP) methodology
 
 This repository contains the R implementation of the Individualised Dispensing Patterns (IDP) methodology for estimating medication exposure in pharmaceutical claims data. 
-The finalised implementation is located in `03_IDP_optimised.R`.
+
+!! The finalised implementation is located in `03_IDP_optimised.R`. !!
 
 ### Overview
 
 The IDP methodology provides a data-driven approach to estimate medication exposure periods based on individual persons' dispensing
-patterns. This R implementation is based on the methodology described in: 
+patterns. 
+
+This R implementation is based on the methodology described in: 
 
 > Bharat, C., Degenhardt, L., Pearson, S-A., et al. A data-informed approach using individualised dispensing patterns to estimate medicine exposure periods and dose from pharmaceutical claims data. Pharmacoepidemiol Drug Saf. 2023; 32(3): 352-365. <doi:10.1002/pds.5567>
 
@@ -126,6 +123,7 @@ The output contains exposure periods with these key variables:
 ### Validation
 
 Please note that *this R implementation has not been validated yet*.
+
 Proposed flow for validation and comparison between SAS and R implementation:
 
 ```{r}
