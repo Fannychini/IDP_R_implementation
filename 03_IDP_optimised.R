@@ -669,19 +669,19 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
 #   introduce assumptions about the average dispensing cycle -- or is this ok?
 #   !! TODO ask Malcolm about this
 #
-#   # grace period could be introduced where I calculate patient exposure (ceiling here), i.e. when checking for new episode:
+#   # grace period could be introduced where I calculate patient exposure, i.e. when checking for new episode:
 #   if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + as.integer(e_n) + recent_exposure_window + grace_period))) {
 #     # start new episode code
 #   }
 #   
 #   # and also would need it for when I calculate exposure end:
-#   current_end <- min(as.Date(row$DateSupplied) + as.integer(row$e_n) + # explicitly use ceiling
+#   current_end <- min(as.Date(row$DateSupplied) + as.integer(row$e_n) + 
 #                        grace_period, 
 #                      as.Date(row$SEE1) - 1,
 #                      death_end_date,
 #                      na.rm = TRUE)
 #
-#   recent_end <- min(as.Date(row$DateSupplied) + as.integer(row$e_n + row$recent_exp) + # explicitly use ceiling
+#   recent_end <- min(as.Date(row$DateSupplied) + as.integer(row$e_n + row$recent_exp) + 
 #                        grace_period,
 #                      as.Date(row$SEE1) - 1,
 #                      death_end_date,
