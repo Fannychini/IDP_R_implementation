@@ -326,6 +326,16 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
         # index dispensing using population estimate
         e_n <- current_q * patient_data$P_80[i]
 
+        # adding printings for index dispensings
+        if (i <= 2) {  # First two dispensings
+          cat("\n check index dispensing", i-1, "calculatios \n")
+          cat("date:", format(current_time, "%Y-%m-%d"), "\n")
+          cat("new episode:", ep_num, "\n")
+          cat("quantity:", current_q, "\n")
+          cat("P80:", patient_data$P_80[i], "\n")
+          cat("e_n:", e_n, "\n")
+        }
+
         # flag if after former exposure
         if (ep_num > 1) {
           results$no_formerly_exposed[i] <- 1
@@ -406,6 +416,33 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
 
         # now can calculate e_n
         e_n <- current_q * ((3/6) * term1 + (2/6) * term2 + (1/6) * term3)
+      }
+
+      ## include printings -- something os weird when quantity varies on generated data
+      if (i <= 20 && !is_index_dispensing) {
+        cat("\n check dispensing", i-1, "calculations \n")
+        cat("episode history indices:", episode_history_idx, "\n")
+        # I want each historical dispensing
+        for (j in seq_along(episode_history_idx)) {
+          idx <- episode_history_idx[j]
+          cat(sprintf("history %d: date=%s, e_n=%.1f, actual_exp=%.0f, q=%d\n",
+                      j,
+                      format(patient_data$DateSupplied[idx], "%Y-%m-%d"),
+                      results$e_n[idx],
+                      actual_exposures[j],
+                      quantities[j]))
+        }
+        # I want to see what I use for each calculation
+        cat("\n am using for weighted average: \n")
+        cat(sprintf("position %d (most recent): %.0f / %d = %.1f\n",
+                    n_hist, actual_exposures[n_hist], quantities[n_hist],
+                    actual_exposures[n_hist]/quantities[n_hist]))
+        cat(sprintf("position %d: %.0f / %d = %.1f\n",
+                    n_hist-1, actual_exposures[n_hist-1], quantities[n_hist-1],
+                    actual_exposures[n_hist-1]/quantities[n_hist-1]))
+        cat(sprintf("position %d: %.0f / %d = %.1f\n",
+                    n_hist-2, actual_exposures[n_hist-2], quantities[n_hist-2],
+                    actual_exposures[n_hist-2]/quantities[n_hist-2]))
       }
 
       # store results
