@@ -2,7 +2,7 @@
 
 This repository contains the R implementation of the Individualised Dispensing Patterns (IDP) methodology for estimating medication exposure in pharmaceutical claims data. 
 
-!! The finalised implementation is located in `03_IDP_optimised.R`. !!
+The finalised implementation is located in `IDP_optimised.R` !!
 
 ### Overview
 
@@ -46,19 +46,27 @@ e_pop_estimate(drug_code, macro_d)
 Calculates individual person exposure periods based on dispensing data.
 
 ```{r}
-exposure_by_drug(drug_code, macro_d, EndDate, combined_item_code3, 
-                 output_name = NULL, new_episode_threshold = 365, 
-                 recent_exposure_window = 7, keep_tmp_variable = FALSE)
+exposure_by_drug(drug_code, macro_d, EndDate, pop_estimates, 
+                 new_episode_threshold = 365, recent_exposure_window = 7, 
+                 keep_tmp_variable = FALSE, percentile_col = "P_80",
+                 DeathDate = NULL, DateSupplied_index = NULL, output_name = NULL)
 ```
 
 - `drug_code` medication code/identifier
 - `macro_d` dataframe with dispensing data
 - `EndDate` study end date
-- `combined_item_code3` population estimates from `e_pop_estimate()`
-- `output_name` name for the output dataframe in global environment (optional)
+- `pop_estimates` population estimates from `e_pop_estimate()`
 - `new_episode_threshold` days threshold for new episodes (default: 365)
 - `recent_exposure_window` days for recent exposure window (default: 7)
+
+Optional:
+
 - `keep_tmp_variable` whether to keep intermediate variables (default: FALSE)
+- `percentile_col` other population estimate to use from pop_estimates (default: P_80)
+- `DeathDate` death date, created if not supplied
+- `DateSupplied_index` index date, uses earliest supply date if not supplied 
+- `output_name` name for the output dataframe in global environment 
+
 
 --\> **Returns** a dataframe with exposure periods for each person
 
@@ -71,8 +79,8 @@ library(tidyverse)
 library(data.table)
 library(lubridate)
 
-# Source R implementation
-source("03_IDP_optimised.R")
+# Source IDP functions
+source("IDP_optimised.R")
 
 # Load data
 data <- read_csv("data.csv")
@@ -82,10 +90,7 @@ data <- read_csv("data.csv")
 #   rename(PPN = x1,               
 #          Group = x2,             
 #          DateSupplied = x3, 
-#          Quantity = x4,
-#          # optional
-#          DeathDate = x5,
-#          DateSupplied_index = x6)
+#          Quantity = x4) 
 
 # Calculate population estimates
 pop_r <- e_pop_estimate("code", data) 
@@ -93,8 +98,8 @@ pop_r <- e_pop_estimate("code", data)
 # Calculate exposure periods
 exposure_r <- exposure_by_drug(drug_code = "code",
                                macro_d = data,
-                               EndDate = as.Date("2023-12-31"), # or max(data$DateSupplied[df$Group == 'code'])
-                               combined_item_code3 = pop_r, # output from e_pop_estimate
+                               EndDate = max(data$DateSupplied[df$Group == 'code']), # or as.Date("yyyy-mm-dd"),
+                               pop_estimates = pop_r, # output from e_pop_estimate
                                new_episode_threshold = 365,  
                                recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
@@ -106,31 +111,37 @@ exposure_r <- exposure_by_drug(drug_code = "code",
 The output contains exposure periods with these key variables:
 
 - `PPN` person identifier
+- `DateSupplied` original dispensing date (kept for all rows)
+- `date_of_supply` dispensing date (NA for recent/former periods)
+- `Quantity` original quantity dispensed (NA for recent/former periods)
+- `Group` medication/drug code
 - `es` exposure status (1=current, 2=recent, 3=former)
 - `start_date` start date of the exposure interval
 - `end_date` end date of the exposure interval
-- `pdays` person-days of exposure
-- `ep_num1` episode number for analysed drug (episodes are periods of continuous treatment)
-- `first_1_date` first dispensing date for analysed drug
+- `pdays` person-days in interval 
+- `ep_num{drug_code}` episode number for analysed drug (i.e. ep_num123)
+- `first_{drug_code}_date` first dispensing date for analysed drug (i.e. first_123_date)
 - `ep_st_date` episode start date
-- `episode_dispensing` number of dispensings in this episode
-- `e_n` calculated exposure duration in days
+- `episode_dispensing` dispensing count in episode (NA for recent/former)
+- `e_n` estimated exposure duration in days (NA for recent/former)
 - `unique_ep_id` unique episode identifier
-- `SEE1` next dispensing date
+- `SEE1` next dispensing date (set as 9999-12-31 for last dispensing)
 - `last` flag for last dispensing (1=yes)
 - `rec_num` record number (increments with exposure state changes)
 
 ### Validation
 
-Please note that *this R implementation has not been validated yet*.
+*This R implementation has not been validated yet*.
 
 Proposed flow for validation and comparison between SAS and R implementation:
 
 ```{r}
-compare_columns <- c("PPN", "group", "ep_num1", "first_1_date", "ep_st_date", 
+drug_code <- "item_code"
+compare_columns <- c("PPN", "Group", paste0("ep_num", drug_code), 
+                     paste0("first_", drug_code, "_date"), "ep_st_date", 
                      "start_date", "end_date", "episode_dispensing", "e_n", 
                      "unique_ep_id", "SEE1", "last", "es", "pdays", "rec_num")
-
+                     
 ## Run R functions
 # e_pop_estimate
 pop_r <- e_pop_estimate("item_code", validation_data) 
@@ -138,8 +149,8 @@ pop_r <- e_pop_estimate("item_code", validation_data)
 # exposure_by_drug
 exposure_r <- exposure_by_drug(drug_code = "item_code",
                                macro_d = validation_data,
-                               EndDate = as.Date("2023-12-31"), 
-                               combined_item_code3 = pop_r,
+                               EndDate = max(validation_data$DateSupplied[validation_data$Group == 'item_code']), 
+                               pop_estimates = pop_r,
                                new_episode_threshold = 365,  
                                recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
@@ -160,7 +171,7 @@ differences <- anti_join(r_results[, compare_columns],
 
 ### Citation
 
-If you use this implementation in your research, please cite both the original paper and this repository:
+If you use this implementation in your research, please cite both the original paper and this R implementation:
 
    ```
    Bharat, C., Degenhardt, L., Pearson, S-A., et al. A data-informed approach using individualised dispensing patterns to estimate medicine exposure periods and dose from pharmaceutical claims data.

@@ -14,6 +14,9 @@ sessionInfo()
 # This is the optimised R implementation of IDP
 # from https://github.com/c-bharat/IDP_exposure_method
 
+# !! The implementation was tested on generated data only, validation is pending !!
+
+
 ## helper functions ----
 
 ### check the dates ----
@@ -181,11 +184,12 @@ e_pop_estimate <- function(drug_code, macro_d) {
 #' @param drug_code medication code
 #' @param macro_d df with dispensing data
 #' @param EndDate study end of follow-up/right censoring date
-#' @param combined_item_code3 population estimates output from e_pop_estimate
+#' @param pop_estimates population estimates output from e_pop_estimate
 #' @param new_episode_threshold days threshold for defining new episodes (default 365)
 #' @param recent_exposure_window days for recent exposure window (default 7)
-#' @param keep_tmp_variable keep temporary variables in final df (default FALSE)
 #' OPTIONAL PARAMETERS:
+#' @param keep_tmp_variable keep temporary variables in final df (default FALSE)
+#' @param pop_estimates if need another population estimates output from e_pop_estimate (default P_80)
 #' @param DeathDate if not supplied, will create it and assign NA (default NULL)
 #' @param DateSupplied_index index supply date for study period, if not supplied,
 #' will assign earliest supply date of chosen drug_code for each person id
@@ -193,10 +197,10 @@ e_pop_estimate <- function(drug_code, macro_d) {
 
 #' @return get a df with exposure periods
 #'
-exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
+exposure_by_drug <- function(drug_code, macro_d, EndDate, pop_estimates,
                              new_episode_threshold = 365, recent_exposure_window = 7,
-                             keep_tmp_variable = FALSE, DeathDate = NULL,
-                             DateSupplied_index = NULL, output_name = NULL) {
+                             keep_tmp_variable = FALSE, percentile_col = "P_80",
+                             DeathDate = NULL, DateSupplied_index = NULL, output_name = NULL) {
 
   # remove dt warnings
   datatable.verbose.orig <- getOption("datatable.verbose")
@@ -243,18 +247,18 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
   macro_d <- macro_d %>%
     mutate(across(contains("date") | contains("Date"), as.Date))
 
-  # get population estimate
-  e_est_macro <- combined_item_code3 %>%
+  # get population estimate, updated to use another percentile if needed
+  e_est_macro <- pop_estimates %>%
     filter(Group == drug_code) %>%
-    select(Group, P_80)
+    select(Group, !!sym(percentile_col))
 
   # check that there exactly one value
   if(nrow(e_est_macro) != 1) {
     stop(paste0("there is more than 1 value for population quantile estimate for drug code ", drug_code))
   }
 
-  # add to dispensing data directly
-  P_80_value <- e_est_macro$P_80[1]
+  # add to dispensing data directly, updated to use another percentile if needed
+  P_value <- e_est_macro[[percentile_col]][1]
   macro_d_temp <- macro_d %>%
     filter(Group == drug_code & DateSupplied >= DateSupplied_index) %>%
     mutate(P_80 = P_80_value)
@@ -764,37 +768,42 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
 
 # *potential stuff to change*
 # 3) do we need to allow selection of pop quantile different to P80? SAS explicitly uses this one only
-# 4) grace period handling? -- see below
+# 4) grace period handling?
 
 
 ## Add grace period option? ----
-# exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
-#                              output_name, new_episode_threshold = 365, recent_exposure_window = 7,
-#                              keep_tmp_variable = FALSE,
-#                              grace_period = 0) {
 #
 #   grace period is not included in SAS code, at least did not spot it
 #   if using grace with IDP, prob makes more sense to add grace days to current exposure periods,
 #   so would delay the start of the next episode
 #   if I were to add grace days to the input data, this may cause issues in the weighed formula or
 #   introduce assumptions about the average dispensing cycle -- or is this ok?
-#   !! TODO ask Malcolm about this
+#
+# exposure_by_drug <- function(drug_code, macro_d, EndDate, pop_estimates,
+#                              new_episode_threshold = 365, recent_exposure_window = 7,
+#                              keep_tmp_variable = FALSE, percentile_col = "P_80",
+#                              DeathDate = NULL, DateSupplied_index = NULL, output_name = NULL,
+#                              grace_period = 0) {
 #
 #   # grace period could be introduced where I calculate patient exposure, i.e. when checking for new episode:
-#   if (ep_num == 0 || (!is.na(t_nm1) && current_time > (t_nm1 + as.integer(e_n) + recent_exposure_window + grace_period))) {
-#     # start new episode code
+#   calculate_patient_exposure <- function(patient_data, grace_period) {
+#
+#     processed_data <- lapply(patients, function(p) {
+#       patient_data <- dt[PPN == p][order(DateSupplied)]
+#       calculate_patient_exposure(patient_data, grace_period)
+#     })
+#
+#     results$recent_exp <- recent_exposure_window
+#     results$grace_period <- grace_period
+#
+#     if (gap_days > (ceiling(prev_e_n) + recent_exposure_window + grace_period)) {
+#       is_index_dispensing <- TRUE
+#     }
 #   }
 #
-#   # and also would need it for when I calculate exposure end:
-#   current_end <- min(as.Date(row$DateSupplied) + as.integer(row$e_n) +
-#                        grace_period,
-#                      as.Date(row$SEE1) - 1,
-#                      death_end_date,
-#                      na.rm = TRUE)
+#   # and also in create_exposure_intervals:
+#   theoretical_end <- current_start + ceiling(row$e_n) + row$grace_period
 #
-#   recent_end <- min(as.Date(row$DateSupplied) + as.integer(row$e_n + row$recent_exp) +
-#                        grace_period,
-#                      as.Date(row$SEE1) - 1,
-#                      death_end_date,
-#                      na.rm = TRUE)
+#   recent_theoretical_end <- theoretical_end + row$recent_exp
+#
 # }

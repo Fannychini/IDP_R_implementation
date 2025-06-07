@@ -13,9 +13,8 @@ library(beepr)
 set.seed(239)
 
 ## Source implementation and generated data
-source("03_IDP_optimised.R")
-#source("04_IDP_tidy_friendly.R") 
-source("06_generate_data.R")
+source("IDP_optimised.R")
+source("generate_data.R")
 
 ## Generate data ----
 disp_data <- generate_diverse_data(n_patients_per_med = 50, n_dispenses_per_patient = 5)
@@ -27,11 +26,11 @@ head(disp_data)
 # individual-level daily dispensing data, where dispensings on the same day for the same medicine(s) are combined/summed together (daily total dispensed)
 
 # Col names if want to match function requirements:
-# rename columns 
+# rename columns
 df <- disp_data %>%
-  rename(PPN = patient_id,               
-         Group = medication,             
-         DateSupplied = dispense_date, 
+  rename(PPN = patient_id,
+         Group = medication,
+         DateSupplied = dispense_date,
          Quantity = quantity_dispensed)
 
 
@@ -39,15 +38,14 @@ df <- disp_data %>%
 # Here we look at Levodrax
 
 ### e_pop_estimate ----
-pop_output <- e_pop_estimate("Levodrax", df) 
+pop_output <- e_pop_estimate("Levodrax", df)
 
 ### exposure_by_drug ----
 exposure_result <- exposure_by_drug(drug_code = "Levodrax",
                                     macro_d = df,
-                                    EndDate = max(df$DateSupplied[df$Group == 'Levodrax']), 
-                                    # or as.Date("2023-12-31")
-                                    combined_item_code3 = pop_output,
-                                    new_episode_threshold = 365,  
+                                    EndDate = max(df$DateSupplied[df$Group == 'Levodrax']),
+                                    pop_estimates = pop_output,
+                                    new_episode_threshold = 365,
                                     recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
   mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
@@ -60,9 +58,9 @@ exposure_summary <- exposure_result %>%
             total_days = sum(pdays),
             avg_duration = mean(pdays))
 #   es      patients total_days avg_duration
-# 1 Current       50       6944        27.8 
+# 1 Current       50       6944        27.8
 # 2 Recent        37        134         2.73
-# 3 Former         3         18         6   
+# 3 Former         3         18         6
 
 # # visuals for 5 PPNs
 # exposure_5ppn <- exposure_result %>%
@@ -70,7 +68,7 @@ exposure_summary <- exposure_result %>%
 #   # sample 5 PPNs
 #   slice_sample(n = 5) %>%
 #   inner_join(exposure_result, by = "PPN")
-#   
+#
 # ggplot(exposure_5ppn, aes(y=PPN, color=es)) +
 #   geom_segment(aes(x=start_date+1, xend=end_date, yend=PPN)) +
 #   geom_point(aes(x=DateSupplied)) +
@@ -83,8 +81,10 @@ ggplot(exposure_result, aes(y=PPN, color=es)) +
 
 
 ## SAS vs R ----
-compare_columns <- c("PPN", "group", "ep_num1", "first_1_date", "ep_st_date", 
-                     "start_date", "end_date", "episode_dispensing", "e_n", 
+drug_code <- "code"
+compare_columns <- c("PPN", "Group", paste0("ep_num", drug_code),
+                     paste0("first_", drug_code, "_date"), "ep_st_date",
+                     "start_date", "end_date", "episode_dispensing", "e_n",
                      "unique_ep_id", "SEE1", "last", "es", "pdays", "rec_num")
 
 ### Run e_pop_estimate and exposure_by_drug ----
@@ -96,8 +96,8 @@ pop_r <- e_pop_estimate("code", validation_data) %>%
 exposure_r <- exposure_by_drug(drug_code = "code",
                                macro_d = validation_data,
                                EndDate = max(validation_data$Date_of_Supply),
-                               combined_item_code3 = pop_r,
-                               new_episode_threshold = 365,  
+                               pop_estimates = pop_r,
+                               new_episode_threshold = 365,
                                recent_exposure_window = 7) %>%
   mutate(PPN = factor(PPN)) %>%
   mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
@@ -110,7 +110,7 @@ r_results <- exposure_r %>% arrange(PPN, start_date)
 sas_results <- exposure_sas %>% arrange(PPN, start_date)
 
 ### Check differences in both implementations ----
-differences <- anti_join(r_results[, compare_columns], 
+differences <- anti_join(r_results[, compare_columns],
                          sas_results[, compare_columns])
 
 
@@ -126,7 +126,7 @@ for (drug in unique_drugs) {
   combined_item_code <- rbind(combined_item_code, drug_percentiles)
 }
 
-combined_item_code3 <- combined_item_code 
+combined_item_code3 <- combined_item_code
 #          N       P_20 P_50      P_60       P_70       P_80      P_85      P_90      group
 # 20%  14800  0.9333333  1.0  1.033333  1.0333333  1.0666667  1.066667  1.100000   Levodrax
 # 20%1 14800  0.4761905  0.5  0.500000  0.5238095  0.5238095  0.547619  0.547619  Cyclobine
@@ -137,20 +137,20 @@ combined_item_code3 <- combined_item_code
 
 ### Calculate exposures ----
 # study end date
-end_date <- as.Date("2023-12-31")  
+end_date <- as.Date("2023-12-31")
 
 # process each drug
 for (drug in unique_drugs) {
   # define output variable name
   output_name <- paste0("exposure_", drug)
-  
+
   # calculate exposures using exposure_by_drug function
   exposure_result <- exposure_by_drug(drug_code = drug,
                                       macro_d = df,
                                       EndDate = end_date,
-                                      combined_item_code3 = combined_item_code3,
+                                      pop_estimates = pop_estimates,
                                       output_name = output_name,
-                                      new_episode_threshold = 365,  
+                                      new_episode_threshold = 365,
                                       recent_exposure_window = 7) %>%
     mutate(PPN = factor(PPN)) %>%
     mutate(es = factor(es, levels=1:3, labels=c("Current", "Recent", "Former")))
@@ -162,8 +162,8 @@ for (drug in unique_drugs) {
 # may need to fix warning at some point
 # Warning message:
   # In `[.data.table`(macro_episodes, , `:=`(ep_st_date, first(Date_of_Supply)),  :
-  # Invalid .internal.selfref detected and fixed by taking a (shallow) copy of the data.table 
-  # so that := can add this new column by reference. At an earlier point, this data.table 
+  # Invalid .internal.selfref detected and fixed by taking a (shallow) copy of the data.table
+  # so that := can add this new column by reference. At an earlier point, this data.table
   # has been copied by R (or was created manually using structure() or similar).
 
 ### Analyse exposure for one drug ----
@@ -182,7 +182,7 @@ exposure_summary <- exposure_data %>%
 
 print(exposure_summary)
 #      es patients total_days avg_duration
-# 1     1      200      71200        28.6 
+# 1     1      200      71200        28.6
 # 2     2      193        782         1.84
 
 check_143 <- exposure_data %>% filter(PPN %in% c('143')) %>% arrange(DateSupplied)
