@@ -350,7 +350,23 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
         episode_start_idx <- which(results$ep_num == ep_num)[1]
         episode_history_idx <- episode_start_idx:(i-1)
 
+        ### flag: I misunderstood what the paper/SAS code used when describing
+        ### 'actual exposure' = "define exposure as current until the next dispensing (dn + 1)"
+        ### whicih in SAS is:
+        ### `end_date = MIN(INTNX('DAY',date_of_supply,e_n,'END'), SEE1-1, DeathDate, &EndDate.);`
+        ### BUT, in my previous code I thought if SAS caps exposure for the output intervals,
+        ### it uses the same "actual" capped values when calculating the weighted average afterwards
+        ### -> no, there are actually 2 types of dispensing intervals in the code
+        ### 1) output exposure intervals where capped values are used (current exposure ends at next dispensing)
+        ### 2) weighted average calculation where RAW !! intervals between dispensing dates are used
+        ### SAS used `(Date_of_Supply-t_nm1)/q_nm1` but I used actual days of exposure instead
+
+        ### -> final version of R implementation now use the raw intervals
+        ### the use of the capped values cause issues when quantities varied because
+        ### it was introducing different ratio in the weighted calculations
+
         # calculate actual exposures for each historical dispensing (e_n = 1)
+        # using RAW intervals for weighted average and NOT capped actual exposures
         actual_exposures <- numeric(length(episode_history_idx))
         quantities <- numeric(length(episode_history_idx))
 
@@ -359,10 +375,9 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
 
           # get dispensing data
           hist_date <- as.Date(patient_data$DateSupplied[hist_idx])
-          hist_e_n <- results$e_n[hist_idx]
           hist_q <- patient_data$Quantity[hist_idx]
 
-          # find when next dispensing occurred, this should be ok
+          # find when next dispensing occurred
           if (hist_idx < (i-1)) {
             next_date <- as.Date(patient_data$DateSupplied[hist_idx + 1])
           } else {
@@ -370,17 +385,8 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
             next_date <- current_time
           }
 
-          # calculate actual exposure using SAS logic
-          # !! flag causing potential issues
-          # start_date = dispensing_date - 1
-          # end_date = MIN(start_date + e_n, next_dispensing - 1, EndDate)
-          sas_start <- hist_date - 1
-          sas_theoretical_end <- sas_start + ceiling(hist_e_n) - 1
-          sas_next_limit <- next_date - 1
-          sas_actual_end <- min(sas_theoretical_end, sas_next_limit, EndDate)
-
-          # actual exposure = pdays (from SAS -- this is not what I was doing initially)
-          actual_exposures[j] <- as.numeric(sas_actual_end - sas_start)
+          # need to use RAW interval between dispensings -- actually matching SAS
+          actual_exposures[j] <- as.numeric(next_date - hist_date)
           quantities[j] <- hist_q
         }
 
@@ -418,32 +424,32 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
         e_n <- current_q * ((3/6) * term1 + (2/6) * term2 + (1/6) * term3)
       }
 
-      ## include printings -- something os weird when quantity varies on generated data
-      if (i <= 20 && !is_index_dispensing) {
-        cat("\n check dispensing", i-1, "calculations \n")
-        cat("episode history indices:", episode_history_idx, "\n")
-        # I want each historical dispensing
-        for (j in seq_along(episode_history_idx)) {
-          idx <- episode_history_idx[j]
-          cat(sprintf("history %d: date=%s, e_n=%.1f, actual_exp=%.0f, q=%d\n",
-                      j,
-                      format(patient_data$DateSupplied[idx], "%Y-%m-%d"),
-                      results$e_n[idx],
-                      actual_exposures[j],
-                      quantities[j]))
-        }
-        # I want to see what I use for each calculation
-        cat("\n am using for weighted average: \n")
-        cat(sprintf("position %d (most recent): %.0f / %d = %.1f\n",
-                    n_hist, actual_exposures[n_hist], quantities[n_hist],
-                    actual_exposures[n_hist]/quantities[n_hist]))
-        cat(sprintf("position %d: %.0f / %d = %.1f\n",
-                    n_hist-1, actual_exposures[n_hist-1], quantities[n_hist-1],
-                    actual_exposures[n_hist-1]/quantities[n_hist-1]))
-        cat(sprintf("position %d: %.0f / %d = %.1f\n",
-                    n_hist-2, actual_exposures[n_hist-2], quantities[n_hist-2],
-                    actual_exposures[n_hist-2]/quantities[n_hist-2]))
-      }
+      # ## include printings -- something os weird when quantity varies on generated data
+      # if (i <= 20 && !is_index_dispensing) {
+      #   cat("\n check dispensing", i-1, "calculations \n")
+      #   cat("episode history indices:", episode_history_idx, "\n")
+      #   # I want each historical dispensing
+      #   for (j in seq_along(episode_history_idx)) {
+      #     idx <- episode_history_idx[j]
+      #     cat(sprintf("history %d: date=%s, e_n=%.1f, actual_exp=%.0f, q=%d\n",
+      #                 j,
+      #                 format(patient_data$DateSupplied[idx], "%Y-%m-%d"),
+      #                 results$e_n[idx],
+      #                 actual_exposures[j],
+      #                 quantities[j]))
+      #   }
+      #   # I want to see what I use for each calculation
+      #   cat("\n am using for weighted average: \n")
+      #   cat(sprintf("position %d (most recent): %.0f / %d = %.1f\n",
+      #               n_hist, actual_exposures[n_hist], quantities[n_hist],
+      #               actual_exposures[n_hist]/quantities[n_hist]))
+      #   cat(sprintf("position %d: %.0f / %d = %.1f\n",
+      #               n_hist-1, actual_exposures[n_hist-1], quantities[n_hist-1],
+      #               actual_exposures[n_hist-1]/quantities[n_hist-1]))
+      #   cat(sprintf("position %d: %.0f / %d = %.1f\n",
+      #               n_hist-2, actual_exposures[n_hist-2], quantities[n_hist-2],
+      #               actual_exposures[n_hist-2]/quantities[n_hist-2]))
+      # }
 
       # store results
       results$ep_num[i] <- ep_num
@@ -697,50 +703,63 @@ exposure_by_drug <- function(drug_code, macro_d, EndDate, combined_item_code3,
 }
 
 
-## Column outputs detail if needed for debug or testing ----
+## Column outputs detail ----
 #
-# historical dispensing dates columns:
-# t_nm1 date of the most recent previous dispensing in this episode
-# t_nm2 date of the second most recent previous dispensing in this episode
-# t_nm3 date of the third most recent previous dispensing in this episode
-# last_time is most recent dispensing date
+# -- Intermediate variables (removed unless keep_tmp_variable = TRUE) --
+# historical dispensing columns used in weighted average calculation:
+# t_nm1, t_nm2, t_nm3 - dates of previous dispensings
+# q_nm1, q_nm2, q_nm3 - quantities from previous dispensings
+# last_time - copy of DateSupplied for current row
+# last_q - copy of Quantity for current row
+# no_formerly_exposed - indicator (1) if this dispensing starts a new episode after former exposure
+# lag_es - exposure status (es) from previous row, used to detect state transitions
+# PPN1 - PPN from next row, only used in look-ahead
 #
-# historical dispensing quantities columns:
-# q_nm1 quantity dispensed at the most recent previous dispensing
-# q_nm2 quantity dispensed at the second most recent previous dispensing
-# q_nm3 quantity dispensed at the third most recent previous dispensing
-# last_q quantity from most recent dispensing
+# -- Main output variables --
+# 1) core dispensing columns:
+# PPN - unique person identifier
+# DateSupplied - date of dispensing
+# Quantity - quantity dispensed on this date
+# Group - medication/drug code
+# P_80 - population-level 80th percentile estimate of days per unit
+# DateSupplied_index - first dispensing date in study period for this ppn
+# DeathDate - date of death (if applicable)
 #
-# tracking episodes columns:
-# episode_dispensing is number of dispensings within current episode
-# unique_ep_id is unique identifier for each medication episode
-# first_date first dispensing date for this patient
-# ep_st_date start date of current episode
-# no_formerly_exposed indicator if ppn was formerly exposed before this dispensing
+# 2) episode tracking columns:
+# ep_num{drug_code} - episode number for this specific drug (increments after former exposure)
+# episode_dispensing - dispensing count within current episode (1 for index, >=2 for subsequent)
+# unique_ep_id - globally unique identifier for each medication episode
+# e_n - estimated exposure days for this dispensing (quantity × weighted avg days/unit)
+# first_{drug_code}_date - first dispensing date for this drug for this person
+# ep_st_date - start date of current episode (DateSupplied of first dispensing in episode)
 #
-# exposure interval columns:
-# es is exposure status (1=current, 2=recent, 3=former)
-# start_date start date of this exposure interval
-# end_date end date of this exposure interval
-# date_of_supply dispensing date (should be NA for es=2 & es=3)
-# pdays person-days for this interval
-# start_t days from index date to interval start
-# end_t days from index date to interval end
+# 3) exposure interval columns:
+# es - exposure status (1=current, 2=recent, 3=former)
+# start_date - start date of this exposure interval (DateSupplied - 1 for current exposure)
+# end_date - end date of this exposure interval
+# pdays - person-days in this interval (end_date - start_date + 1)
+# start_t - days from DateSupplied_index to start_date
+# end_t - days from DateSupplied_index to end_date
 #
-# next dispensing columns:
-# PPN1 technically is ppn of next record, but not useful and have not populated it
-# SEE1 date of next dispensing
-# EP1 episode number of next dispensing
-# last is indicator for last dispensing (with 1 == yes)
+# 4) next dispensing columns (look-ahead):
+# SEE1 - date of next dispensing (set as 9999-12-31 for last dispensing)
+# EP1 - episode number of next dispensing (set as NA for last dispensing)
+# last - indicator for last dispensing in dataset (1 = yes)
 #
-# state transition tracking columns:
-# lag_es is exposure status of previous interval
-# rec_num is record number, where it increments as the exposure state changes
+# 5) other derived columns:
+# recent_exp - length of recent exposure window (default 7 days)
+# death - death indicator (1 if DeathDate exists, 0 otherwise)
+# cens_date - censoring date (minimum of DeathDate and study EndDate)
+# rec_num - row counter that increments when exposure status (es) changes
 #
+# Noting that this code aligns with SAS behaviour and includes NA values for:
+# es=2 (recent) and es=3 (former) intervals, DateSupplied,
+# Quantity, e_n, and episode_dispensing, because they represent gaps between dispensings
+
 
 ## Malcolm : issues / questions ----
 # *fixed*
-# 1) quantile calculation in R vs SAS alignment (potentially fixed with type = 2)
+# 1) quantile calculation in R vs SAS alignment (type = 2)
 # 2) SAS uses intnx for dates, think current implementation aligns with it
 
 # *potential stuff to change*
